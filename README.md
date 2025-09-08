@@ -1,1 +1,2 @@
-# Final_ProjectSDL_Atul_Ethan_Nitya_Artur
+# Fashion Curation Monorepo
+
