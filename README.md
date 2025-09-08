@@ -1,2 +1,1 @@
-# Fashion Curation Monorepo
 
