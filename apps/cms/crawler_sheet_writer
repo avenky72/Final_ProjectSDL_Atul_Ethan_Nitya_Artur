@@ -1,0 +1,867 @@
+#!/usr/bin/env python3
+
+import json
+import time
+import requests
+import re
+import os
+import csv
+from bs4 import BeautifulSoup
+from typing import Dict, List, Optional
+from datetime import datetime
+from urllib.parse import urlparse, urljoin
+import base64
+
+# Google Sheets imports
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+
+class UniversalCrawlerWithSheets:
+    """
+    Universal crawler that can handle any website structure and writes to Google Sheets and Supabase.
+    Maintains consistent data structure across JSON, Sheets, and Database.
+    """
+    
+    def __init__(self):
+        """Initialize the universal crawler with Google Sheets integration"""
+        self.api_base_url = "http://localhost:3001"
+        self.spreadsheet_id = None
+        self.sheets_service = None
+        self.credentials = None
+        
+    def test_api_connection(self):
+        """Test connection to the fashion curation API"""
+        try:
+            print("TESTING API: Checking connection to fashion curation API...")
+            response = requests.get(f"{self.api_base_url}/health", timeout=10)
+            if response.status_code == 200:
+                print("API CONNECTION SUCCESS: API is running and healthy")
+                return True
+            else:
+                print(f"API CONNECTION ERROR: HTTP {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"API CONNECTION ERROR: {e}")
+            return False
+    
+    def get_user_input(self):
+        """Get URLs to crawl from user input"""
+        print("UNIVERSAL CRAWLER: Enter URLs to crawl (one per line, empty line to finish):")
+        print("TIP: Use specific category URLs like /collections/men, /collections/tops for better results")
+        print()
+        
+        urls = []
+        while True:
+            url = input("Enter URL (or press Enter to finish): ").strip()
+            if not url:
+                break
+            urls.append(url)
+            print(f"Added: {url}")
+        
+        print(f"\nURLS TO CRAWL: {len(urls)}")
+        for i, url in enumerate(urls, 1):
+            print(f"  {i}. {url}")
+        print()
+        
+        return urls
+    
+    def setup_google_sheets(self):
+        """Setup Google Sheets API connection"""
+        try:
+            print("SETTING UP GOOGLE SHEETS: Connecting to Google Sheets API...")
+            
+            # Get spreadsheet ID from user
+            spreadsheet_id = input("Enter your Google Spreadsheet ID: ").strip()
+            self.spreadsheet_id = spreadsheet_id
+            
+            # Setup credentials
+            self.credentials = Credentials.from_service_account_file(
+                'credentials.json',
+                scopes=['https://www.googleapis.com/auth/spreadsheets']
+            )
+            
+            # Build service
+            self.sheets_service = build('sheets', 'v4', credentials=self.credentials)
+            
+            print("GOOGLE SHEETS CONNECTED: Successfully connected to Google Sheets API")
+            return True
+            
+        except Exception as e:
+            print(f"GOOGLE SHEETS ERROR: {e}")
+            return False
+
+    def create_sheet(self, sheet_name: str):
+        """Create a new sheet in the spreadsheet"""
+        try:
+            print(f"CREATING SHEET: {sheet_name}")
+            
+            request_body = {
+                'requests': [{
+                    'addSheet': {
+                        'properties': {
+                            'title': sheet_name
+                        }
+                    }
+                }]
+            }
+            
+            self.sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=self.spreadsheet_id,
+                body=request_body
+            ).execute()
+            
+            print(f"SHEET CREATED: {sheet_name}")
+            return True
+            
+        except Exception as e:
+            print(f"SHEET CREATION ERROR: {e}")
+            return False
+
+    def write_headers_to_sheet(self, sheet_name: str):
+        """Write headers to Google Sheets with new column order"""
+        try:
+            print(f"WRITING HEADERS: {sheet_name}")
+            
+            # New column order: Title, Price, Image URL, Image, Product URL, Source URL, Timestamp
+            headers = ['Title', 'Price', 'Image URL', 'Image', 'Product URL', 'Source URL', 'Timestamp']
+            
+            self.sheets_service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range=f"{sheet_name}!A1:G1",
+                valueInputOption='RAW',
+                body={'values': [headers]}
+            ).execute()
+            
+            print(f"HEADERS WRITTEN: {sheet_name}")
+            return True
+            
+        except Exception as e:
+            print(f"HEADER WRITE ERROR: {e}")
+            return False
+
+    def write_products_to_sheet(self, sheet_name: str, products: List[Dict]):
+        """Write products to Google Sheets with new column order"""
+        try:
+            print(f"WRITING TO SHEET: {sheet_name}")
+            
+            rows = []
+                for product in products:
+                # New column order: Title, Price, Image URL, Image, Product URL, Source URL, Timestamp
+                    row = [
+                    product.get('title', ''),  # Column A: Title
+                    product.get('price', ''),  # Column B: Price
+                    product.get('image_url', ''),  # Column C: Image URL
+                    '',  # Column D: Image (will be filled with formulas)
+                    product.get('product_url', ''),  # Column E: Product URL
+                    product.get('source_url', ''),  # Column F: Source URL
+                    product.get('crawl_timestamp', '')  # Column G: Timestamp
+                    ]
+                    rows.append(row)
+            
+            # Write to range A2:G
+            range_name = f"{sheet_name}!A2:G{len(rows) + 1}"
+            body = {'values': rows}
+            
+            self.sheets_service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range=range_name,
+                valueInputOption='RAW',
+                body=body
+            ).execute()
+            
+            print(f"PRODUCTS WRITTEN: {len(products)} products to {sheet_name}")
+            
+            # Try different image approaches
+            self.try_multiple_image_approaches(sheet_name, len(products))
+            
+            return True
+            
+        except Exception as e:
+            print(f"SHEET WRITE ERROR: {e}")
+            return False
+    
+    def try_multiple_image_approaches(self, sheet_name: str, num_rows: int):
+        """Try multiple approaches to display images"""
+        try:
+            print("TRYING MULTIPLE IMAGE APPROACHES: Testing different methods...")
+            
+            # Approach 1: Try with different IMAGE formula syntax
+            print("APPROACH 1: Trying IMAGE formula with different syntax...")
+            self.add_image_formulas_v1(sheet_name, num_rows)
+            
+            # Wait a moment for formulas to process
+            time.sleep(2)
+            
+            # Approach 2: Try with HYPERLINK + IMAGE
+            print("APPROACH 2: Trying HYPERLINK + IMAGE combination...")
+            self.add_image_formulas_v2(sheet_name, num_rows)
+            
+            # Wait a moment for formulas to process
+            time.sleep(2)
+            
+            # Approach 3: Try with direct URL references
+            print("APPROACH 3: Trying direct URL references...")
+            self.add_image_formulas_v3(sheet_name, num_rows)
+            
+        except Exception as e:
+            print(f"MULTIPLE IMAGE APPROACHES ERROR: {e}")
+    
+    def add_image_formulas_v1(self, sheet_name: str, num_rows: int):
+        """Approach 1: Standard IMAGE formula"""
+        try:
+            print("APPROACH 1: Standard IMAGE formulas...")
+            
+            image_formulas = []
+            for i in range(2, num_rows + 2):
+                formula = f'=IFERROR(IMAGE(C{i}, 4), "No image")'
+                image_formulas.append(formula)
+            
+            # Write to column D
+            range_name = f"{sheet_name}!D2:D{num_rows + 1}"
+            body = {'values': [[formula] for formula in image_formulas]}
+            
+            self.sheets_service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range=range_name,
+                valueInputOption='USER_ENTERED',
+                body=body
+            ).execute()
+            
+            print(f"APPROACH 1 COMPLETE: {len(image_formulas)} formulas written")
+            
+        except Exception as e:
+            print(f"APPROACH 1 ERROR: {e}")
+    
+    def add_image_formulas_v2(self, sheet_name: str, num_rows: int):
+        """Approach 2: HYPERLINK + IMAGE combination"""
+        try:
+            print("APPROACH 2: HYPERLINK + IMAGE formulas...")
+            
+            image_formulas = []
+            for i in range(2, num_rows + 2):
+                formula = f'=IFERROR(HYPERLINK(C{i}, IMAGE(C{i}, 4)), "No image")'
+                image_formulas.append(formula)
+            
+            # Write to column H (after the main data)
+            range_name = f"{sheet_name}!H2:H{num_rows + 1}"
+            body = {'values': [[formula] for formula in image_formulas]}
+            
+            self.sheets_service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range=range_name,
+                valueInputOption='USER_ENTERED',
+                body=body
+            ).execute()
+            
+            print(f"APPROACH 2 COMPLETE: {len(image_formulas)} formulas written to column H")
+            
+        except Exception as e:
+            print(f"APPROACH 2 ERROR: {e}")
+    
+    def add_image_formulas_v3(self, sheet_name: str, num_rows: int):
+        """Approach 3: Direct URL references with different syntax"""
+        try:
+            print("APPROACH 3: Direct URL references...")
+            
+            # Get the image URLs from column C
+            range_name = f"{sheet_name}!C2:C{num_rows + 1}"
+            result = self.sheets_service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id,
+                range=range_name
+            ).execute()
+            
+            values = result.get('values', [])
+            print(f"DEBUG: Found {len(values)} image URLs")
+            
+            # Try different IMAGE formula variations
+            image_formulas = []
+            for i, row in enumerate(values):
+                if row and row[0]:  # If there's an image URL
+                    # Try different IMAGE formula syntaxes
+                    formula = f'=IFERROR(IMAGE("{row[0]}", 4), "Blocked")'
+                    image_formulas.append(formula)
+                else:
+                    image_formulas.append("No URL")
+            
+            # Write to column I
+            range_name = f"{sheet_name}!I2:I{num_rows + 1}"
+            body = {'values': [[formula] for formula in image_formulas]}
+            
+            self.sheets_service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range=range_name,
+                valueInputOption='USER_ENTERED',
+                body=body
+            ).execute()
+            
+            print(f"APPROACH 3 COMPLETE: {len(image_formulas)} formulas written to column I")
+            
+        except Exception as e:
+            print(f"APPROACH 3 ERROR: {e}")
+    
+    def test_simple_image(self, sheet_name: str):
+        """Test with a simple, known working image"""
+        try:
+            print("TESTING SIMPLE IMAGE: Testing with a basic image URL...")
+            
+            # Test with a simple image that should work
+            test_urls = [
+                "https://via.placeholder.com/300x300/FF0000/FFFFFF?text=TEST1",
+                "https://via.placeholder.com/300x300/00FF00/FFFFFF?text=TEST2", 
+                "https://via.placeholder.com/300x300/0000FF/FFFFFF?text=TEST3"
+            ]
+            
+            for i, url in enumerate(test_urls):
+                formula = f'=IFERROR(IMAGE("{url}", 4), "Blocked")'
+                
+                self.sheets_service.spreadsheets().values().update(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=f"{sheet_name}!J{i+1}",
+                    valueInputOption='USER_ENTERED',
+                    body={'values': [[formula]]}
+                ).execute()
+                
+                print(f"TEST IMAGE {i+1}: {url}")
+            
+            print("TEST IMAGES: Check columns J1, J2, J3 for colored test images")
+            
+        except Exception as e:
+            print(f"TEST SIMPLE IMAGE ERROR: {e}")
+    
+    def set_column_widths(self, sheet_name: str):
+        """Set appropriate column widths for the sheet with large images"""
+        try:
+            print("SETTING COLUMN WIDTHS: Optimizing column sizes for large images...")
+            
+            requests = [
+                {
+                    'updateDimensionProperties': {
+                        'range': {
+                            'sheetId': 0,
+                            'dimension': 'COLUMNS',
+                            'startIndex': 0,
+                            'endIndex': 1
+                        },
+                        'properties': {
+                            'pixelSize': 200  # Column A: Title
+                        },
+                        'fields': 'pixelSize'
+                    }
+                },
+                {
+                    'updateDimensionProperties': {
+                        'range': {
+                            'sheetId': 0,
+                            'dimension': 'COLUMNS',
+                            'startIndex': 1,
+                            'endIndex': 2
+                        },
+                        'properties': {
+                            'pixelSize': 100  # Column B: Price
+                        },
+                        'fields': 'pixelSize'
+                    }
+                },
+                {
+                    'updateDimensionProperties': {
+                        'range': {
+                            'sheetId': 0,
+                            'dimension': 'COLUMNS',
+                            'startIndex': 2,
+                            'endIndex': 3
+                        },
+                        'properties': {
+                            'pixelSize': 300  # Column C: Image URL
+                        },
+                        'fields': 'pixelSize'
+                    }
+                },
+                {
+                    'updateDimensionProperties': {
+                        'range': {
+                            'sheetId': 0,
+                            'dimension': 'COLUMNS',
+                            'startIndex': 3,
+                            'endIndex': 4
+                        },
+                        'properties': {
+                            'pixelSize': 500  # Column D: Image (LARGE for visibility)
+                        },
+                        'fields': 'pixelSize'
+                    }
+                }
+            ]
+            
+            self.sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=self.spreadsheet_id,
+                body={'requests': requests}
+            ).execute()
+            
+            print("COLUMN WIDTHS SET: Optimized for large, visible images")
+                
+        except Exception as e:
+            print(f"COLUMN WIDTH ERROR: {e}")
+            raise
+    
+    def extract_brand_id(self, url: str) -> str:
+        """Extract brand ID from base URL"""
+        parsed = urlparse(url)
+        domain = parsed.netloc.replace('www.', '')
+        return domain.split('.')[0]  # e.g., "protemoa" from "protemoa.com"
+    
+    def is_valid_product(self, title: str, product_url: str) -> bool:
+        """Check if this is a valid product (not a promotion, discount, etc.)"""
+        # Skip non-product items
+        invalid_titles = [
+            'preorder', 'sold out', 'sale', 'discount', 'promotion', 
+            'coupon', 'code', 'offer', 'deal', 'special', 'new',
+            'featured', 'trending', 'popular', 'bestseller'
+        ]
+        
+        title_lower = title.lower()
+        for invalid in invalid_titles:
+            if invalid in title_lower:
+                return False
+        
+        # Skip if title is too short or generic
+        if len(title) < 3 or title_lower in ['product', 'item', 'new', 'sale']:
+            return False
+
+        # Skip if URL contains non-product paths
+        invalid_paths = ['/cart', '/checkout', '/account', '/login', '/register', 
+                        '/search', '/filter', '/sort', '/sale', '/discount']
+        for path in invalid_paths:
+            if path in product_url.lower():
+                return False
+                
+        return True
+    
+    def extract_title_from_element(self, element) -> str:
+        """Extract title from an element with better filtering"""
+        # Look for title in various formats
+        title_selectors = [
+            'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            'span[class*="title"]',
+            'div[class*="title"]',
+            'p[class*="title"]',
+            'span[class*="name"]',
+            'div[class*="name"]',
+            'p[class*="name"]',
+            'span[class*="product"]',
+            'div[class*="product"]',
+            'p[class*="product"]',
+            '.title',
+            '.name',
+            '.product-name',
+            '[data-title]',
+            '[data-name]'
+        ]
+        
+        for selector in title_selectors:
+            title_elem = element.select_one(selector)
+            if title_elem:
+                title_text = title_elem.get_text().strip()
+                if title_text and len(title_text) > 2:
+                    return title_text
+        
+        # Fallback: get any text from the element
+        text = element.get_text().strip()
+        if text and len(text) > 2:
+            return text
+        
+        return "Unknown Product"
+    
+    def extract_price_from_element(self, element) -> str:
+        """Extract price from an element with better detection"""
+        # Look for price in various formats
+        price_selectors = [
+            'span[class*="price"]',
+            'div[class*="price"]', 
+            'p[class*="price"]',
+            '.price',
+            '[data-price]',
+            'span[class*="cost"]',
+            'div[class*="cost"]',
+            'span[class*="amount"]',
+            'div[class*="amount"]',
+            'span[class*="money"]',  # This should catch protemoa.com
+            'div[class*="money"]',
+            'span[class*="dollar"]',
+            'div[class*="dollar"]',
+            'span[class*="value"]',
+            'div[class*="value"]'
+        ]
+        
+        for selector in price_selectors:
+            price_elem = element.select_one(selector)
+            if price_elem:
+                price_text = price_elem.get_text().strip()
+                if price_text and price_text != "Price not available":
+                    return price_text
+        
+        # If no price found, try to find any text with $, €, or £
+        text = element.get_text()
+        if '$' in text or '€' in text or '£' in text:
+            import re
+            price_match = re.search(r'[\$€£][\d,]+\.?\d*', text)
+            if price_match:
+                return price_match.group()
+        
+        return "Price not available"
+    
+    def extract_image_url(self, element, base_url: str) -> str:
+        """Extract image URL from an element with multiple fallback strategies"""
+        # Strategy 1: Look for img tags with data-src (lazy loading)
+        img = element.find('img')
+        if img:
+            for attr in ['data-src', 'data-lazy', 'src']:
+                if img.get(attr):
+                    img_url = img.get(attr)
+                    if img_url.startswith('http'):
+                        return img_url
+                    elif img_url.startswith('/'):
+                        return urljoin(base_url, img_url)
+                    else:
+                        return urljoin(base_url, img_url)
+        
+        # Strategy 2: Look for background images in style attributes
+        style = element.get('style', '')
+        if 'background-image' in style:
+            import re
+            match = re.search(r'url\(["\']?([^"\']+)["\']?\)', style)
+            if match:
+                img_url = match.group(1)
+                if img_url.startswith('http'):
+                            return img_url
+                elif img_url.startswith('/'):
+                    return urljoin(base_url, img_url)
+                else:
+                    return urljoin(base_url, img_url)
+        
+        # Strategy 3: Look in parent elements
+        parent = element.parent
+        if parent:
+            return self.extract_image_url(parent, base_url)
+        
+        return "Image not available"
+    
+    def extract_products_from_links(self, links: List, source_url: str) -> List[Dict]:
+        """Extract products from product links with better filtering and deduplication"""
+            products = []
+        seen_urls = set()  # Track seen URLs to avoid duplicates
+        brand_id = self.extract_brand_id(source_url)
+            
+        for link in links[:200]:  # Process up to 200 links
+                try:
+                    # Get product URL
+                product_url = link.get('href', '')
+                if not product_url or product_url.startswith('#'):
+                    continue
+                    
+                # Make absolute URL
+                if product_url.startswith('/'):
+                    product_url = urljoin(source_url, product_url)
+                
+                # Skip if we've already seen this URL
+                if product_url in seen_urls:
+                    continue
+                seen_urls.add(product_url)
+                
+                # Get title with better extraction
+                title = self.extract_title_from_element(link)
+                if not title or title.lower() in ['unknown product', 'product', 'item']:
+                    continue
+                
+                # Check if this is a valid product
+                if not self.is_valid_product(title, product_url):
+                    continue
+                    
+                # Get price with parent element search
+                price = self.extract_price_from_element(link)
+                if price == "Price not available":
+                    # Try parent element for price
+                    parent = link.find_parent()
+                    if parent:
+                        price = self.extract_price_from_element(parent)
+                        if price == "Price not available":
+                            # Try grandparent element for price
+                            grandparent = parent.parent
+                            if grandparent:
+                                price = self.extract_price_from_element(grandparent)
+                
+                # Get image with better extraction
+                image_url = self.extract_image_url(link, source_url)
+                
+                # Only add if we have essential data
+                if title and image_url != "Image not available":
+                    # Create product with consistent structure
+                    product = {
+                        'title': title,
+                        'image_url': image_url,
+                        'price': price,
+                        'product_url': product_url,
+                        'source_url': source_url,
+                        'crawl_timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'brand_id': brand_id
+                    }
+                    products.append(product)
+                    
+                except Exception as e:
+                print(f"ERROR processing link: {e}")
+                    continue
+        
+        return products
+    
+    def crawl_url(self, url: str) -> List[Dict]:
+        """Crawl a single URL and extract products with better product detection"""
+        try:
+            print(f"CRAWLING URL: {url}")
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'lxml')
+            
+            # Strategy 1: Look for product links with more specific selectors
+            product_links = soup.find_all('a', href=lambda x: x and '/products/' in x)
+            if product_links:
+                print(f"STRATEGY 1: Found {len(product_links)} product links")
+                products = self.extract_products_from_links(product_links, url)
+                if products:
+                    print(f"PRODUCTS FOUND: {len(products)}")
+                    return products
+            
+            # Strategy 2: Look for product grids with more specific selectors
+            print("STRATEGY 2: Looking for product grids...")
+            grid_selectors = [
+                'div[class*="collection"]',
+                'div[class*="product"]',
+                'div[class*="grid"]',
+                'div[class*="card"]',
+                'div[class*="item"]',
+                'div[class*="goods"]',  # Add more specific selectors
+                'div[class*="list"]',
+                'div[class*="catalog"]'
+            ]
+            
+            for selector in grid_selectors:
+                grids = soup.select(selector)
+                if grids:
+                    print(f"FOUND GRID: {selector} with {len(grids)} products")
+                    all_links = []
+                    for grid in grids:
+                        links = grid.find_all('a', href=True)
+                        all_links.extend(links)
+                    
+                    if all_links:
+                        products = self.extract_products_from_links(all_links, url)
+                        if products:
+                            print(f"PRODUCTS FOUND: {len(products)}")
+                            return products
+            
+            # Strategy 3: Look for any links that might be products
+            print("STRATEGY 3: Looking for any product-like links...")
+            all_links = soup.find_all('a', href=True)
+            product_links = [link for link in all_links if link.get('href') and '/product' in link.get('href', '')]
+            
+            if product_links:
+                print(f"FOUND: {len(product_links)} potential products")
+                products = self.extract_products_from_links(product_links, url)
+                if products:
+            print(f"PRODUCTS FOUND: {len(products)}")
+            return products
+            
+            print(f"NO PRODUCTS FOUND: {url}")
+            return []
+            
+        except Exception as e:
+            print(f"CRAWLING ERROR: {e}")
+            return []
+
+    def post_to_supabase(self, product: Dict) -> bool:
+        """Post a single product to Supabase via the API"""
+        try:
+            # Map product data to database fields
+                    api_product = {
+                        'title': product.get('title', ''),
+                'description': '',
+                'brand_id': None,  # Will be handled by brand_id field
+                'category_id': 1,
+                        'url': product.get('product_url', ''),
+                'url_hash': None,
+                        'price': self.extract_price_value(product.get('price', '')),
+                        'currency': 'USD',
+                'gender': None,
+                'colors': None,
+                'sizes': None,
+                'images': [product.get('image_url', '')],  # Convert to JSON array
+                'external_id': None,
+                'in_stock': True
+            }
+            
+                    response = requests.post(
+                        f"{self.api_base_url}/api/products",
+                        json=api_product,
+                headers={'Content-Type': 'application/json'},
+                        timeout=30
+                    )
+                    
+                    if response.status_code == 201:
+                print(f"SUCCESS: Posted {product.get('title', 'Unknown')} to Supabase")
+                return True
+                    else:
+                print(f"ERROR: Failed to post {product.get('title', 'Unknown')} - {response.text}")
+                return False
+            
+        except Exception as e:
+            print(f"ERROR: Failed to post {product.get('title', 'Unknown')} - {e}")
+            return False
+
+    def extract_price_value(self, price_str: str) -> Optional[float]:
+        """Extract numeric price value from price string"""
+        if not price_str or price_str == "Price not available":
+            return None
+        
+        # Remove currency symbols and extract number
+        import re
+        price_match = re.search(r'[\d,]+\.?\d*', price_str.replace(',', ''))
+        if price_match:
+            try:
+                return float(price_match.group())
+            except ValueError:
+                return None
+        return None
+    
+    def save_to_json(self, products: List[Dict], filename: str):
+        """Save products to JSON file"""
+        try:
+            os.makedirs('crawled_products', exist_ok=True)
+            filepath = os.path.join('crawled_products', filename)
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(products, f, indent=2, ensure_ascii=False)
+        
+        print(f"JSON SAVED: {filepath}")
+            return True
+            
+        except Exception as e:
+            print(f"JSON SAVE ERROR: {e}")
+            return False
+    
+    def save_to_csv(self, products: List[Dict], filename: str):
+        """Save products to CSV file"""
+        try:
+            os.makedirs('crawled_products', exist_ok=True)
+            filepath = os.path.join('crawled_products', filename)
+            
+            with open(filepath, 'w', newline='', encoding='utf-8') as f:
+                if products:
+                    writer = csv.DictWriter(f, fieldnames=products[0].keys())
+                    writer.writeheader()
+                    writer.writerows(products)
+            
+            print(f"CSV SAVED: {filepath}")
+            return True
+            
+        except Exception as e:
+            print(f"CSV SAVE ERROR: {e}")
+            return False
+    
+    def run(self):
+        """Main crawler execution"""
+        print("UNIVERSAL CRAWLER WITH LARGE IMAGES: Starting product crawl...")
+        
+        # Test API connection
+        if not self.test_api_connection():
+            print("API connection failed. Please start the server with: node server-REST.js")
+            return
+        
+        # Setup Google Sheets
+        if not self.setup_google_sheets():
+            print("Google Sheets setup failed. Please check your credentials.json file.")
+            return
+        
+        # Get URLs to crawl
+        urls = self.get_user_input()
+        if not urls:
+            print("No URLs provided. Exiting.")
+            return
+        
+        all_products = []
+        successful_sites = 0
+        failed_sites = 0
+        
+        # Crawl each URL
+        for url in urls:
+            print(f"\nCRAWLING: {url}")
+            products = self.crawl_url(url)
+            
+            if products:
+                all_products.extend(products)
+                successful_sites += 1
+                print(f"SITE COMPLETE: {len(products)} products found")
+            else:
+                failed_sites += 1
+                print(f"SITE EMPTY: {url} - no products found")
+            
+        if not all_products:
+            print("\nCRAWLER COMPLETE: No products found from any site")
+            return
+        
+        # Save to local files
+        print(f"\nSAVING TO FILES: Writing products to local storage...")
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        json_filename = f"crawled_products_{timestamp}.json"
+        csv_filename = f"crawled_products_{timestamp}.csv"
+        
+        self.save_to_json(all_products, json_filename)
+        self.save_to_csv(all_products, csv_filename)
+        
+        # Post to Supabase
+        print(f"\nPOSTING TO SUPABASE: Uploading products to database...")
+        successful_posts = 0
+        failed_posts = 0
+        
+        for product in all_products:
+            if self.post_to_supabase(product):
+                successful_posts += 1
+            else:
+                failed_posts += 1
+        
+        # Write to Google Sheets
+        print(f"\nWRITING TO GOOGLE SHEETS: Uploading products to spreadsheet...")
+            sheet_name = f"Crawled_Products_{timestamp}"
+            
+            if self.create_sheet(sheet_name):
+            if self.write_headers_to_sheet(sheet_name):
+                if self.write_products_to_sheet(sheet_name, all_products):
+                    self.test_simple_image(sheet_name)
+                    self.set_column_widths(sheet_name)
+                    print(f"SHEET COMPLETE: {sheet_name}")
+                    print("CHECK THE SHEET:")
+                    print("- Column D: Standard IMAGE formulas")
+                    print("- Column H: HYPERLINK + IMAGE formulas") 
+                    print("- Column I: Direct URL IMAGE formulas")
+                    print("- Columns J1-J3: Test images (should show colored squares)")
+                else:
+                    print("SHEET WRITE FAILED: Could not write products to sheet")
+            else:
+                print("HEADER WRITE FAILED: Could not write headers to sheet")
+        else:
+            print("SHEET CREATION FAILED: Could not create new sheet")
+        
+        # Final summary
+        print(f"\nCRAWLER COMPLETE:")
+        print(f"  Total processed: {len(all_products)}")
+        print(f"  Products posted to Supabase: {successful_posts}")
+        print(f"  Products written to Sheets: {len(all_products)}")
+        print(f"  Errors: {failed_posts}")
+        print(f"  Output directory: crawled_products")
+
+if __name__ == "__main__":
+    crawler = UniversalCrawlerWithSheets()
+    crawler.run()
