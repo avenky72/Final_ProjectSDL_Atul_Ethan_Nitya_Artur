@@ -1,0 +1,66 @@
+
+Essay Feedback
+Homework Assignment #1
+CMSI 4071 Fall 2025
+======================
+
+SUMMARY:
+The essay accurately captures the main points of the APA article
+"Psychological Testing and Assessments Are Going High Tech."  It
+highlights the shift from traditional neuropsychological tests to
+VR-based assessments and emphasizes the benefits such as realism,
+cost-effectiveness, and improved engagement, especially among
+younger users.
+
+The essay includes key ideas such as the use of VR for ADHD
+assessment, the limitations of traditional testing, the role of games
+in cognitive evaluation, and the importance of sustained/selective
+attention, working memory, and task switching.
+
+
+The essay references Albert Rizzo and Gazzaley, incorporating quotes
+and paraphrased content effectively.
+
+
+The summary is generally clear and logically structured, though some
+sentences could benefit from improved grammar and punctuation for better
+readability.
+
+The writer goes beyond summarizing by reflecting on the implications of the
+article, such as the generational divide in tech adoption and the potential
+for VR to revolutionize assessments.
+
+CRITICAL THINKING:
+The essay makes a strong connection between the article’s content and the
+team's own software project ~ a fashion app.  It explores how VR assessments
+could enhance user experience and data collection.
+
+The proposed ideas ~ such as virtual closets, real-time fitting rooms, and
+machine learning-based personalization ~ are creative and demonstrate forward-
+thinking.
+
+While the ideas are innovative, the essay could benefit from a more critical
+look at the technical feasibility, resource requirements, and potential
+limitations of implementing VR and ML in their app.
+
+The essay could more explicitly tie the discussion back to core software
+engineering principles such as user-centered design, system requirements, or
+prototyping.
+
+The section is rich in ideas but could be better organized.  Some paragraphs
+are long and could be broken up for clarity.  Transitions between ideas could
+be smoother.
+
+OVERALL ASSESSMENT:
+   Category                          Points
+   Summary of article                  25
+   Relation to S/W engineering         25
+   Thoughts/opinions presented         25
+   Spelling/Grammar                    25
+                                     -----
+   Subtotal                           100
+   ------------------------------------------------------
+   Total Percentage:   100 out of 100 which is an A-plus
+
+
+

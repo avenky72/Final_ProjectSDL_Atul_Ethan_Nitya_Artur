@@ -1,0 +1,113 @@
+
+Documentation Feedback ~ Deliverable #2
+Software Requirements Specification
+Initial Development Schedule
+CMSI 4071 Fall 2025
+=======================================
+
+COMPONENT BREAKDOWN:
+This is rudimentary at best.  It would be better to have a 'real' diagram
+with boxes and labels and arrows or lines.  Try putting something in there
+like that for the second submission.
+
+FUNCTIONAL REQUIREMENTS:
+========================
+Strengths:
+The functional requirements are well-structured and mapped to specific CSCs
+   (Computer Software Components) and CSUs (Computer Software Units), which
+   aligns with waterfall methodology.
+Each major component (Frontend, API Server, Database, Web Scraper) has
+   clearly defined responsibilities and associated functional requirements.
+The requirements are written in a clear, testable, and actionable format
+   using “shall” statements, which is appropriate for a waterfall SRS.
+
+Coverage:
+Frontend: Covers all major user interactions, including browsing, outfit
+   creation, closet management, and authentication.
+API Server: Includes endpoints for CRUD operations, user and outfit
+   management, validation, and rate limiting.
+Database: Specifies schema-level requirements, including indexing and
+   referential integrity.
+Web Scraper: Includes crawling, data extraction, deduplication, and
+   integration with Google Sheets and the database.
+
+Gaps / Suggestions:
+Error Handling & Edge Cases: While error messages are mentioned in
+   5.3.1.10, more detailed requirements for handling edge cases (e.g.,
+   failed API calls, scraper errors, invalid user input) would improve
+   robustness.
+User Roles & Permissions: There is no mention of different user roles
+   (e.g., admin vs. regular user) or access control. If applicable, this
+   should be specified.
+Sharing Functionality: The system is described as one that allows users
+   to “share” outfits, but the functional requirements do not explicitly
+   define how sharing works (e.g., via links, social media, within the
+   app).
+Notifications / Feedback: Consider adding requirements for user
+   notifications (e.g., confirmation emails, alerts for failed scrapes,
+   or updates on shared outfits).
+Analytics / Tracking: If the system is expected to track user behavior
+   (e.g., most saved outfits, popular brands), functional requirements
+   for analytics should be included.
+
+PERFORMANCE REQUIREMENTS:
+=========================
+Strengths:
+The performance requirements are clearly categorized into:
+
+Response Time
+Scalability
+Data Quality
+
+Quantitative metrics are provided (e.g., "homepage shall load within
+   3 seconds", "database queries shall execute within 500 milliseconds"),
+   which makes them measurable and testable.
+
+Coverage:
+Response Time: Covers frontend, API, and database responsiveness.
+Scalability: Defines user and data volume thresholds.
+Data Quality: Includes image resolution, scraper accuracy, and
+   deduplication precision.
+
+Gaps / Suggestions:
+Availability & Reliability: No mention of uptime targets (e.g., 99.9%
+   availability) or fault tolerance.
+Concurrency & Load Testing: While 100 concurrent users are mentioned,
+   it would be helpful to define how the system should behave under
+   stress (e.g., what happens at 200 users?).
+Security Performance: While security requirements are listed under
+   the environment section, performance implications of security (e.g.,
+   encryption overhead, token validation latency) are not addressed.
+Scraper Throughput: The scraper is limited to 200 products per session,
+   but no time frame is given (e.g., per hour, per day). Clarifying this
+   would help with capacity planning.
+
+ENVIRONMENT REQUIREMENTS:
+Software and hardware requirements are adequate for this submission.
+
+OVERALL ASSESSMENT:
+   Category                          Points
+   Component Breakdown                 1/1
+   Functional Requirements             4/4
+   Performance Requirements            2/2
+   Environment Requirements            1/1
+                                     =====
+   Subtotal                            8/8
+   Preliminary Schedule                0/2   not done
+   ------------------------------------------------------
+   Total Percentage:   8/10 = 80% which is a B on this deliverable
+
+To enhance the SRS for a waterfall development process:
+   Add detailed use cases or user stories to contextualize the functional
+      requirements.
+   Include a traceability matrix to map requirements to components and
+      test cases.
+   Expand on non-functional requirements such as maintainability,
+      portability, and usability.
+   Define acceptance criteria for each requirement to support verification
+      and validation.
+
+Make these changes/additions by the end of the semester for full credit on
+   this document.
+
+Nice work!
