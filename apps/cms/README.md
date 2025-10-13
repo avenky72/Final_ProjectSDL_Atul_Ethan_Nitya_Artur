@@ -2,7 +2,7 @@
 
 This directory contains the backend API server and data pipeline for the fashion curation website. It handles product data management, web scraping, and database operations.
 
-(made with help of Cursor, to use the crawler for now make sure to run the server-REST.js not the direct npm run dev)
+(made with help of Cursor, to use the crawler for now make sure to run the server-REST.js not the direct npm run dev)e
 
 ## Structure
 
