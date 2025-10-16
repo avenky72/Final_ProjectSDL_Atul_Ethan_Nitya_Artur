@@ -73,30 +73,29 @@ app.post('/api/products', async (req, res) => {
     }
 
     const responseText = await response.text()
+    console.log('Supabase response status:', response.status);
+    console.log('Supabase response text:', responseText);
 
-    if (!responseText)
-    {
-        throw new Error('Empty response from DB');
-    }
+    // Supabase returns empty response on successful POST, which is normal
+    let responseProduct = req.body; // Return what we sent as confirmation
 
-    let product;
-    try 
-    {
-        product = JSON.parse(responseText);
-    } catch (parseError) {
-        console.error('JSON parse error:', parseError);
-        console.error('Response text', responseText);
-        throw new Error(`Invalid JSON response: ${parseError.message}`);
-    }
-
-    if (!Array.isArray(product) || product.length == 0)
-    {
-        throw new Error('No product from DB')
+    // If there is a response, try to parse it
+    if (responseText) {
+        try {
+            const product = JSON.parse(responseText);
+            if (Array.isArray(product) && product.length > 0) {
+                responseProduct = product[0];
+            } else if (product && typeof product === 'object') {
+                responseProduct = product;
+            }
+        } catch (parseError) {
+            console.log('Could not parse response, using request body');
+        }
     }
 
     res.status(201).json({
-        message: 'Product uploaded succesfully',
-        product: product[0]
+        message: 'Product uploaded successfully',
+        product: responseProduct
     })
     
 } catch (error) {
