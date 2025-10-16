@@ -36,7 +36,6 @@ CREATE TABLE IF NOT EXISTS products (
     brand_id INTEGER REFERENCES brands(id) ON DELETE CASCADE,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     url TEXT NOT NULL,
-    url_hash VARCHAR(64) UNIQUE, -- For deduplication
     price DECIMAL(10,2),
     currency VARCHAR(3) DEFAULT 'USD',
     gender VARCHAR(20), -- 'men', 'women', 'unisex', or whatever you want
@@ -59,7 +58,6 @@ CREATE TABLE IF NOT EXISTS product_tags (
 -- Performance indexes
 CREATE INDEX IF NOT EXISTS idx_products_brand_id ON products(brand_id);
 CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id);
-CREATE INDEX IF NOT EXISTS idx_products_url_hash ON products(url_hash);
 CREATE INDEX IF NOT EXISTS idx_products_gender ON products(gender);
 CREATE INDEX IF NOT EXISTS idx_products_price ON products(price);
 CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at);

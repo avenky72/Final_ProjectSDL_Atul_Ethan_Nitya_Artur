@@ -69,41 +69,87 @@ app.post('/api/products', async (req, res) => {
     if (!response.ok) {
         const error = await response.text();
         console.error('Supabase error:', error);
+        console.error('Request body that failed:', req.body);
         throw new Error(`HTTP error! status: ${response.status}, ${error}`);
     }
 
     const responseText = await response.text()
+    console.log('Supabase response status:', response.status);
+    console.log('Supabase response text:', responseText);
 
-    if (!responseText)
-    {
-        throw new Error('Empty response from DB');
-    }
+    // Supabase returns empty response on successful POST, which is normal
+    let responseProduct = req.body; // Return what we sent as confirmation
 
-    let product;
-    try 
-    {
-        product = JSON.parse(responseText);
-    } catch (parseError) {
-        console.error('JSON parse error:', parseError);
-        console.error('Response text', responseText);
-        throw new Error(`Invalid JSON response: ${parseError.message}`);
-    }
-
-    if (!Array.isArray(product) || product.length == 0)
-    {
-        throw new Error('No product from DB')
+    // If there is a response, try to parse it
+    if (responseText) {
+        try {
+            const product = JSON.parse(responseText);
+            if (Array.isArray(product) && product.length > 0) {
+                responseProduct = product[0];
+            } else if (product && typeof product === 'object') {
+                responseProduct = product;
+            }
+        } catch (parseError) {
+            console.log('Could not parse response, using request body');
+        }
     }
 
     res.status(201).json({
-        message: 'Product uploaded succesfully',
-        product: product[0]
+        message: 'Product uploaded successfully',
+        product: responseProduct
     })
     
 } catch (error) {
     console.error('Error creating product:', error);
     res.status(500).json({error: error.message});
     }
-})
+});
+
+//update product for putting true image urls in
+app.patch('/api/products/:id', async (req, res) => {
+  try {
+    const productId = req.params.id;
+    console.log(`Updating product ${productId}:`, req.body);
+    
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${productId}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(req.body)
+    });
+    
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Supabase error:', error);
+      throw new Error(`HTTP error! status: ${response.status}, ${error}`);
+    }
+    
+    const responseText = await response.text();
+    let updatedProduct;
+    
+    if (responseText) {
+      try {
+        updatedProduct = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError);
+        throw new Error(`Invalid JSON response: ${parseError.message}`);
+      }
+    } else {
+      updatedProduct = [];
+    }
+    
+    res.json({ 
+      message: 'Product updated successfully', 
+      product: updatedProduct[0] || updatedProduct
+    });
+  } catch (error) {
+    console.error('Error updating product:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 app.listen(port, () => {
   console.log(`CMS API server running on port ${port}`);
