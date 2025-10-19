@@ -22,9 +22,8 @@ export default function CoutureCloset() {const [currentPage, setCurrentPage] = u
             
             <button onClick={() => setCurrentPage('home')} className={currentPage === 'home' ? 'bg-purple-600 text-white px-6 py-2 rounded' : 'bg-gray-100 px-6 py-2 rounded'}>Home</button>
             
-            <button onClick={() => setCurrentPage('outfit')} className={currentPage === 'outfit' ? 'bg-purple-600 text-white px-6 py-2 rounded' : 'bg-gray-100 px-6 py-2 rounded'}>Outfit</button>
+            <button onClick={() => setCurrentPage('profile')} className={currentPage === 'profile' ? 'bg-purple-600 text-white px-6 py-2 rounded' : 'bg-gray-100 px-6 py-2 rounded'}>Profile</button>
             
-            <button onClick={() => setCurrentPage('closet')} className={currentPage === 'closet' ? 'bg-purple-600 text-white px-6 py-2 rounded' : 'bg-gray-100 px-6 py-2 rounded'}>Closet</button>
           
           </div>
 
@@ -32,7 +31,7 @@ export default function CoutureCloset() {const [currentPage, setCurrentPage] = u
 
       </nav>
 
-      <main className="max-w-6xl mx-auto p-8">{currentPage === 'home' && <HomePage />} {currentPage === 'outfit' && <OutfitPage />} {currentPage === 'closet' && <ClosetPage />}</main>
+      <main className="max-w-6xl mx-auto p-8">{currentPage === 'home' && <HomePage />} {currentPage === 'outfit' && <ProfilePage />}</main>
 
     </div>
   );
@@ -57,7 +56,7 @@ function HomePage() {
   );
 }
 
-function OutfitPage() {
+function ProfilePage() {
   return (
     <div>
 
@@ -75,19 +74,3 @@ function OutfitPage() {
   );
 }
 
-function ClosetPage() {
-  return (
-    <div>
-      
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2">Your Closet</h1>
-        <p className="text-xl text-gray-600">here are ur saved outfits</p>
-      </div>
-      
-      <div className="bg-white p-8 rounded">
-        <p className="text-gray-500">outfits</p>
-      </div>
-
-    </div>
-  );
-}
