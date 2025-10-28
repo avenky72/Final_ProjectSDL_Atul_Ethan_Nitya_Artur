@@ -1,7 +1,12 @@
+require('dotenv').config();
+
+
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
-require('dotenv').config();
+const authRoutes = require('./routes/auth.routes');
+
+
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -15,6 +20,9 @@ const pool = new Pool({
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+app.use('/api/auth', authRoutes);
+
 
 // Helper function to create URL hash for deduplication
 const createUrlHash = (url) => {
