@@ -1,12 +1,9 @@
 require('dotenv').config();
 
-
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const authRoutes = require('./routes/auth.routes');
-
-
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -20,9 +17,7 @@ const pool = new Pool({
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
-
 app.use('/api/auth', authRoutes);
-
 
 // Helper function to create URL hash for deduplication
 const createUrlHash = (url) => {
@@ -39,30 +34,66 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Get all products with basic pagination
+// Get all products with pagination and filters
 app.get('/api/products', async (req, res) => {
   try {
-    const { page = 1, limit = 24 } = req.query;
+    const { page = 1, limit = 24, category, brand, gender } = req.query;
     const offset = (page - 1) * limit;
+
+    let whereConditions = [];
+    let queryParams = [];
+    let paramIndex = 1;
+
+    // Add filter conditions
+    if (category) {
+      whereConditions.push(`c.slug = $${paramIndex}`);
+      queryParams.push(category);
+      paramIndex++;
+    }
+
+    if (brand) {
+      whereConditions.push(`p.brand_id = $${paramIndex}`);
+      queryParams.push(parseInt(brand));
+      paramIndex++;
+    }
+
+    if (gender) {
+      whereConditions.push(`p.gender = $${paramIndex}`);
+      queryParams.push(gender);
+      paramIndex++;
+    }
+
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+    // Add pagination params
+    queryParams.push(parseInt(limit), offset);
 
     const result = await pool.query(`
       SELECT 
         p.*,
         b.name as brand_name,
         c.name as category_name,
-        array_agg(t.name) as tag_names
+        array_agg(t.name) FILTER (WHERE t.name IS NOT NULL) as tag_names
       FROM products p
       LEFT JOIN brands b ON p.brand_id = b.id
       LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN product_tags pt ON p.id = pt.product_id
       LEFT JOIN tags t ON pt.tag_id = t.id
+      ${whereClause}
       GROUP BY p.id, b.name, c.name
       ORDER BY p.created_at DESC
-      LIMIT $1 OFFSET $2
-    `, [parseInt(limit), offset]);
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `, queryParams);
 
-    // Get total count
-    const countResult = await pool.query('SELECT COUNT(*) as total FROM products');
+    // Get total count with same filters
+    const countParams = queryParams.slice(0, -2); // Remove limit and offset
+    const countResult = await pool.query(`
+      SELECT COUNT(DISTINCT p.id) as total 
+      FROM products p
+      LEFT JOIN categories c ON p.category_id = c.id
+      ${whereClause}
+    `, countParams);
+    
     const total = parseInt(countResult.rows[0].total);
 
     res.json({
@@ -89,7 +120,7 @@ app.get('/api/products/:id', async (req, res) => {
         p.*,
         b.name as brand_name,
         c.name as category_name,
-        array_agg(t.name) as tag_names
+        array_agg(t.name) FILTER (WHERE t.name IS NOT NULL) as tag_names
       FROM products p
       LEFT JOIN brands b ON p.brand_id = b.id
       LEFT JOIN categories c ON p.category_id = c.id
@@ -308,10 +339,78 @@ app.get('/api/tags', async (req, res) => {
   }
 });
 
+// ==================== NEW FILTER ENDPOINTS ====================
+
+// Get unique genders from products
+app.get('/api/filters/genders', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT DISTINCT gender 
+      FROM products 
+      WHERE gender IS NOT NULL 
+      ORDER BY gender
+    `);
+    res.json(result.rows.map(row => row.gender));
+  } catch (error) {
+    console.error('Error fetching genders:', error);
+    res.status(500).json({ error: 'Failed to fetch genders' });
+  }
+});
+
+// Get unique colors from products (from JSONB array)
+app.get('/api/filters/colors', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT DISTINCT jsonb_array_elements_text(colors) as color
+      FROM products
+      WHERE colors IS NOT NULL
+      ORDER BY color
+    `);
+    res.json(result.rows.map(row => row.color));
+  } catch (error) {
+    console.error('Error fetching colors:', error);
+    res.status(500).json({ error: 'Failed to fetch colors' });
+  }
+});
+
+// Get unique sizes from products (from JSONB array)
+app.get('/api/filters/sizes', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT DISTINCT jsonb_array_elements_text(sizes) as size
+      FROM products
+      WHERE sizes IS NOT NULL
+      ORDER BY size
+    `);
+    res.json(result.rows.map(row => row.size));
+  } catch (error) {
+    console.error('Error fetching sizes:', error);
+    res.status(500).json({ error: 'Failed to fetch sizes' });
+  }
+});
+
+// Get price range from products
+app.get('/api/filters/price-range', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        MIN(price) as min_price,
+        MAX(price) as max_price
+      FROM products
+      WHERE price IS NOT NULL
+    `);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching price range:', error);
+    res.status(500).json({ error: 'Failed to fetch price range' });
+  }
+});
+
 app.listen(port, () => {
-    console.log(`CMS API server running on port ${port}`);
-    console.log(`Health check: http://localhost:${port}/health`);
-    console.log(`Products API: http://localhost:${port}/api/products`);
-    console.log(`Brands API: http://localhost:${port}/api/brands`);
-    console.log(`Categories API: http://localhost:${port}/api/categories`);
-  });
+  console.log(`CMS API server running on port ${port}`);
+  console.log(`Health check: http://localhost:${port}/health`);
+  console.log(`Products API: http://localhost:${port}/api/products`);
+  console.log(`Brands API: http://localhost:${port}/api/brands`);
+  console.log(`Categories API: http://localhost:${port}/api/categories`);
+  console.log(`Filter APIs: /api/filters/genders, /api/filters/colors`);
+});
