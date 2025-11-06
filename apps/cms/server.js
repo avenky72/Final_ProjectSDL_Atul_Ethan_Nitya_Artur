@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const authRoutes = require('./routes/auth.routes');
+const closetsRoutes = require('./routes/closets.routes');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -18,6 +19,7 @@ const pool = new Pool({
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use('/api/auth', authRoutes);
+app.use('/api/closets', closetsRoutes);
 
 // Helper function to create URL hash for deduplication
 const createUrlHash = (url) => {
@@ -63,7 +65,8 @@ app.get('/api/products', async (req, res) => {
       paramIndex++;
     }
 
-    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+    const whereClause = whereConditions.length > 0 ?
+      `WHERE ${whereConditions.join(' AND ')}` : '';
 
     // Add pagination params
     queryParams.push(parseInt(limit), offset);
@@ -129,11 +132,11 @@ app.get('/api/products/:id', async (req, res) => {
       WHERE p.id = $1
       GROUP BY p.id, b.name, c.name
     `, [id]);
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Product not found' });
     }
-    
+
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error fetching product:', error);
@@ -141,38 +144,20 @@ app.get('/api/products/:id', async (req, res) => {
   }
 });
 
-// Create/Update product (for your crawler)
+// Create or update product (bulk import support)
 app.post('/api/products', async (req, res) => {
-  const client = await pool.connect();
-  
   try {
-    await client.query('BEGIN');
+    const product = req.body;
     
-    const {
-      title,
-      description,
-      brand_name,
-      brand_website,
-      category_slug,
-      url,
-      price,
-      currency = 'USD',
-      gender,
-      colors = [],
-      sizes = [],
-      images = [],
-      external_id,
-      tags = []
-    } = req.body;
-
-    if (!title || !url) {
+    // Validate required fields
+    if (!product.title || !product.url) {
       return res.status(400).json({ error: 'Title and URL are required' });
     }
 
-    const urlHash = createUrlHash(url);
+    const urlHash = createUrlHash(product.url);
 
-    // Check if product already exists
-    const existingProduct = await client.query(
+    // Check if product already exists by URL hash
+    const existingProduct = await pool.query(
       'SELECT id FROM products WHERE url_hash = $1',
       [urlHash]
     );
@@ -180,26 +165,27 @@ app.post('/api/products', async (req, res) => {
     if (existingProduct.rows.length > 0) {
       return res.json({ 
         message: 'Product already exists', 
-        product_id: existingProduct.rows[0].id 
+        id: existingProduct.rows[0].id,
+        skipped: true
       });
     }
 
     // Get or create brand
     let brandId = null;
-    if (brand_name) {
-      const brandResult = await client.query(
-        'INSERT INTO brands (name, website_url) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET website_url = EXCLUDED.website_url RETURNING id',
-        [brand_name, brand_website]
+    if (product.brand_name) {
+      const brandResult = await pool.query(
+        'INSERT INTO brands (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
+        [product.brand_name]
       );
       brandId = brandResult.rows[0].id;
     }
 
-    // Get category ID
+    // Get or create category
     let categoryId = null;
-    if (category_slug) {
-      const categoryResult = await client.query(
+    if (product.category_slug) {
+      const categoryResult = await pool.query(
         'SELECT id FROM categories WHERE slug = $1',
-        [category_slug]
+        [product.category_slug]
       );
       if (categoryResult.rows.length > 0) {
         categoryId = categoryResult.rows[0].id;
@@ -207,109 +193,108 @@ app.post('/api/products', async (req, res) => {
     }
 
     // Insert product
-    const productResult = await client.query(`
+    const result = await pool.query(`
       INSERT INTO products (
-        title, description, brand_id, category_id, url, url_hash,
-        price, currency, gender, colors, sizes, images, external_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      RETURNING id
+        title, description, brand_id, category_id, url, url_hash, 
+        price, currency, gender, colors, sizes, images, external_id, in_stock
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      RETURNING *
     `, [
-      title, description, brandId, categoryId, url, urlHash,
-      price, currency, gender, JSON.stringify(colors), 
-      JSON.stringify(sizes), JSON.stringify(images), external_id
+      product.title,
+      product.description || null,
+      brandId,
+      categoryId,
+      product.url,
+      urlHash,
+      product.price || null,
+      product.currency || 'USD',
+      product.gender || null,
+      product.colors ? JSON.stringify(product.colors) : null,
+      product.sizes ? JSON.stringify(product.sizes) : null,
+      product.images ? JSON.stringify(product.images) : null,
+      product.external_id || null,
+      product.in_stock !== undefined ? product.in_stock : true
     ]);
 
-    const productId = productResult.rows[0].id;
-
-    // Add tags if provided
-    if (tags.length > 0) {
-      for (const tagName of tags) {
+    // Handle tags if provided
+    if (product.tags && Array.isArray(product.tags)) {
+      for (const tagName of product.tags) {
         // Get or create tag
-        const tagResult = await client.query(
-          'INSERT INTO tags (name, slug) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING RETURNING id',
-          [tagName, tagName.toLowerCase().replace(/\s+/g, '-')]
+        const tagResult = await pool.query(
+          'INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
+          [tagName]
         );
-        
-        let tagId;
-        if (tagResult.rows.length > 0) {
-          tagId = tagResult.rows[0].id;
-        } else {
-          // Tag already exists, get its ID
-          const existingTag = await client.query(
-            'SELECT id FROM tags WHERE name = $1',
-            [tagName]
-          );
-          tagId = existingTag.rows[0].id;
-        }
-        
-        await client.query(
+        const tagId = tagResult.rows[0].id;
+
+        // Link product to tag
+        await pool.query(
           'INSERT INTO product_tags (product_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-          [productId, tagId]
+          [result.rows[0].id, tagId]
         );
       }
     }
 
-    await client.query('COMMIT');
-    
-    res.status(201).json({ 
-      message: 'Product created successfully', 
-      product_id: productId 
-    });
-    
+    res.status(201).json(result.rows[0]);
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Error creating product:', error);
     res.status(500).json({ error: 'Failed to create product' });
-  } finally {
-    client.release();
   }
 });
 
-// Bulk import products (for your crawler)
+// Bulk import products
 app.post('/api/products/bulk', async (req, res) => {
-  const { products } = req.body;
-  
-  if (!Array.isArray(products)) {
-    return res.status(400).json({ error: 'Products must be an array' });
-  }
+  try {
+    const products = req.body;
+    
+    if (!Array.isArray(products)) {
+      return res.status(400).json({ error: 'Expected an array of products' });
+    }
 
-  const results = {
-    created: 0,
-    skipped: 0,
-    errors: []
-  };
+    const results = {
+      total: products.length,
+      created: 0,
+      skipped: 0,
+      errors: 0
+    };
 
-  for (let i = 0; i < products.length; i++) {
-    try {
-      const response = await fetch(`http://localhost:${port}/api/products`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(products[i])
-      });
-      
-      const result = await response.json();
-      
-      if (response.ok) {
-        if (result.message === 'Product already exists') {
+    for (const product of products) {
+      try {
+        const response = await fetch('http://localhost:3001/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(product)
+        });
+
+        const data = await response.json();
+        
+        if (data.skipped) {
           results.skipped++;
         } else {
           results.created++;
         }
-      } else {
-        results.errors.push({ index: i, error: result.error });
+      } catch (error) {
+        console.error('Error importing product:', error);
+        results.errors++;
       }
-    } catch (error) {
-      results.errors.push({ index: i, error: error.message });
     }
-  }
 
-  res.json(results);
+    res.json(results);
+  } catch (error) {
+    console.error('Error bulk importing:', error);
+    res.status(500).json({ error: 'Failed to bulk import products' });
+  }
 });
 
-// Get brands
+// Get all brands
 app.get('/api/brands', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM brands ORDER BY name');
+    const result = await pool.query(`
+      SELECT b.*, COUNT(p.id) as product_count
+      FROM brands b
+      LEFT JOIN products p ON b.id = p.brand_id
+      GROUP BY b.id
+      ORDER BY b.name
+    `);
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching brands:', error);
@@ -317,10 +302,16 @@ app.get('/api/brands', async (req, res) => {
   }
 });
 
-// Get categories
+// Get all categories
 app.get('/api/categories', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM categories ORDER BY name');
+    const result = await pool.query(`
+      SELECT c.*, COUNT(p.id) as product_count
+      FROM categories c
+      LEFT JOIN products p ON c.id = p.category_id
+      GROUP BY c.id
+      ORDER BY c.name
+    `);
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching categories:', error);
@@ -328,26 +319,13 @@ app.get('/api/categories', async (req, res) => {
   }
 });
 
-// Get tags
-app.get('/api/tags', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM tags ORDER BY name');
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Error fetching tags:', error);
-    res.status(500).json({ error: 'Failed to fetch tags' });
-  }
-});
-
-// ==================== NEW FILTER ENDPOINTS ====================
-
 // Get unique genders from products
 app.get('/api/filters/genders', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT DISTINCT gender 
-      FROM products 
-      WHERE gender IS NOT NULL 
+      SELECT DISTINCT gender
+      FROM products
+      WHERE gender IS NOT NULL
       ORDER BY gender
     `);
     res.json(result.rows.map(row => row.gender));
@@ -412,5 +390,6 @@ app.listen(port, () => {
   console.log(`Products API: http://localhost:${port}/api/products`);
   console.log(`Brands API: http://localhost:${port}/api/brands`);
   console.log(`Categories API: http://localhost:${port}/api/categories`);
+  console.log(`Closets API: http://localhost:${port}/api/closets`);
   console.log(`Filter APIs: /api/filters/genders, /api/filters/colors`);
 });
