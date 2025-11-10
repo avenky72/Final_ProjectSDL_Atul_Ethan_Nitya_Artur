@@ -63,7 +63,6 @@ export default function Page() {
   const router = useRouter();
   const { user, logout } = useAuth();
   
-  // Products state
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,19 +71,16 @@ export default function Page() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   
-  // Filter options from database
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [genders, setGenders] = useState<string[]>([]);
   const [colors, setColors] = useState<string[]>([]);
   
-  // Filter states
   const [selectedBrand, setSelectedBrand] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedGender, setSelectedGender] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
 
-  // Fetch filter options on mount
   useEffect(() => {
     const fetchFilterOptions = async () => {
       try {
@@ -150,7 +146,6 @@ export default function Page() {
     fetchProducts();
   }, [user, router, page, selectedCategory, selectedBrand, selectedGender]);
 
-  // Apply client-side color filter
   useEffect(() => {
     let filtered = [...products];
 
@@ -199,7 +194,7 @@ export default function Page() {
 
   const getColorHex = (colorName: string): string => {
     const lowerColor = colorName.toLowerCase();
-    return colorHexMap[lowerColor] || '#6B7280'; // Default gray if not found
+    return colorHexMap[lowerColor] || '#6B7280';
   };
 
   if (!user) return null;
@@ -222,7 +217,13 @@ export default function Page() {
       <div className="bg-white border-b px-4 py-3 flex justify-between items-center sticky top-0 z-50 shadow-sm">
         <h1 className="text-xl font-bold">Couture Closet</h1>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-600">Welcome, {user.fullName}</span>
+          <span className="text-sm text-gray-600">Welcome, {user.full_name || user.email}</span>
+          <button 
+            onClick={() => router.push('/profile')}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            My Profile
+          </button>
           <button 
             onClick={logout}
             className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300"
@@ -312,7 +313,7 @@ export default function Page() {
                       : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
                   }`}
                 >
-                  All
+                  All Genders
                 </button>
                 {genders.map((gender) => (
                   <button
@@ -338,7 +339,7 @@ export default function Page() {
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => handleColorChange('')}
-                  className={`px-4 py-2 rounded-full font-medium transition-all ${
+                  className={`px-5 py-2 rounded-full font-medium transition-all ${
                     selectedColor === ''
                       ? 'bg-black text-white shadow-md'
                       : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
@@ -350,74 +351,42 @@ export default function Page() {
                   <button
                     key={color}
                     onClick={() => handleColorChange(color)}
-                    className={`group relative px-4 py-2 rounded-full font-medium transition-all capitalize ${
+                    className={`px-5 py-2 rounded-full font-medium transition-all capitalize ${
                       selectedColor === color
                         ? 'bg-black text-white shadow-md'
                         : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className={`w-4 h-4 rounded-full ${color.toLowerCase() === 'white' ? 'border border-gray-300' : ''}`}
-                        style={{ backgroundColor: getColorHex(color) }}
-                      />
-                      <span>{color}</span>
-                    </div>
+                    <span
+                      className="inline-block w-3 h-3 rounded-full mr-2 border border-gray-300"
+                      style={{ backgroundColor: getColorHex(color) }}
+                    />
+                    {color}
                   </button>
                 ))}
               </div>
             </div>
           )}
+
+          {/* Clear Filters */}
+          {hasActiveFilters && (
+            <div className="flex justify-center">
+              <button
+                onClick={clearAllFilters}
+                className="px-6 py-2 text-sm text-red-600 border border-red-600 rounded hover:bg-red-50"
+              >
+                Clear All Filters
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Active Filters Summary */}
-        {hasActiveFilters && (
-          <div className="mb-6 flex items-center gap-2 flex-wrap">
-            <span className="text-sm text-gray-600">Active filters:</span>
-            {selectedBrand && (
-              <span className="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full">
-                {brands.find(b => b.id === selectedBrand)?.name}
-              </span>
-            )}
-            {selectedCategory && (
-              <span className="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full">
-                {categories.find(c => c.slug === selectedCategory)?.name}
-              </span>
-            )}
-            {selectedGender && (
-              <span className="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full capitalize">
-                {selectedGender}
-              </span>
-            )}
-            {selectedColor && (
-              <span className="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full flex items-center gap-1 capitalize">
-                <div 
-                  className={`w-3 h-3 rounded-full ${selectedColor.toLowerCase() === 'white' ? 'border border-gray-300' : ''}`}
-                  style={{ backgroundColor: getColorHex(selectedColor) }}
-                />
-                {selectedColor}
-              </span>
-            )}
-            <button
-              onClick={clearAllFilters}
-              className="px-3 py-1 text-sm text-red-600 hover:text-red-700 underline"
-            >
-              Clear all
-            </button>
-          </div>
-        )}
-
-        {/* Products Count */}
-        <h1 className="text-3xl font-bold mb-8">
-          Products ({filteredProducts.length})
-        </h1>
-
         {/* Products Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredProducts.map(product => (
-            <div key={product.id} className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow bg-white">
-              <div className="aspect-square bg-gray-50 flex items-center justify-center relative overflow-hidden group">
-                {product.images && product.images[0] ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          {filteredProducts.map((product) => (
+            <div key={product.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow group">
+              <div className="relative h-64 bg-gray-100 flex items-center justify-center overflow-hidden">
+                {product.images && product.images.length > 0 ? (
                   <img 
                     src={product.images[0]} 
                     alt={product.title} 
@@ -438,7 +407,6 @@ export default function Page() {
                   <p className="text-sm text-gray-600 mb-3 line-clamp-2">{product.description}</p>
                 )}
                 
-                {/* Color dots if available */}
                 {product.colors && product.colors.length > 0 && (
                   <div className="flex gap-1 mb-3">
                     {product.colors.slice(0, 5).map((color, idx) => (
@@ -475,7 +443,6 @@ export default function Page() {
           ))}
         </div>
 
-        {/* Load More Button */}
         {hasMore && (
           <div className="flex justify-center mt-8">
             <button 
@@ -488,7 +455,6 @@ export default function Page() {
           </div>
         )}
 
-        {/* No Results Message */}
         {!loading && filteredProducts.length === 0 && (
           <div className="text-center py-12">
             <p className="text-xl text-gray-600 mb-4">No products match your filters.</p>
