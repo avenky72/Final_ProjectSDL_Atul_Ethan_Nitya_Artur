@@ -6,36 +6,89 @@ CMSI 4071 Fall 2025
 
 INTRODUCTION SECTION:
    System objectives section
-      Not done.
-
+      OK
    Hardware, software, and human interfaces section
-      Not done.
+      OK
 
 
 ARCHITECTURAL DESIGN SECTION:
-      Not done.
+   Strengths:
+      Clear separation of Frontend, Backend, and Database components.
+      Each major component is named and described with its responsibilities
+         (e.g., Authentication Module, Product Service).
+      Technology stack is explicitly stated (Next.js, Node.js, Supabase,
+         PostgreSQL), which aids clarity.
+   Suggestions:
+      Include rationale for architectural choices (e.g., why Supabase vs.
+         traditional ORM, why Next.js for SSR).
+      Add non-functional requirements mapping (e.g., scalability, security,
+         performance) to show how architecture supports them.
+      Consider specifying deployment architecture (e.g., cloud provider,
+         containerization, CI/CD pipeline) for completeness.
+
    Major softwre components section
-      Not done.
+      Strengths:
+         Components are grouped logically by layer
+            (Frontend, Backend, Database).
+         Each component lists its main functions (CRUD, authentication, etc.)
+         Database schema tables are identified with indexes for performance.
+      Suggestions:
+         Add interfaces between components (e.g., what data structures or
+            DTOs are exchanged between Frontend and Backend).
+         Include responsibility boundaries (e.g., which component handles
+            validation vs. business logic).
+         Consider adding error handling strategies for each major component.
+
    Major software interactions section
-      Not done.
+      Strengths:
+         Interaction flows are described
+            (login, product fetch, closet creation).
+         Communication protocols (HTTP/HTTPS, REST, JWT) are specified.
+         External integrations (Google OAuth, Cloudinary, web scrapers)
+            are noted.
+      Suggestions:
+         Include sequence diagrams or interaction diagrams for at least one
+            critical use case (login flow is mentioned later but could be
+               referenced here).
+         Add data flow security considerations (e.g., encryption in transit,
+            token expiration).
+         Specify real-time features decision (WebSocket is mentioned as "maybe"
+            clarify if included or deferred).
+
    Architectural design diagrams section
-      Not done.
+      Strengths:
+         High-level diagram showing Frontend -> Backend -> Database is present
+         External services are listed (OAuth, image hosting, scrapers).
+      Suggestions:
+         Diagram could be more detailed: include arrows for data flow, label
+            protocols (HTTPS, Supabase client).
+         Add component-level diagrams for internal Backend architecture
+            (controllers, services).
+         Consider including deployment diagram (e.g., how services run in
+            containers, load balancer, CDN).
+
 
 OVERALL ASSESSMENT:
    Category                          Points
-   INTRODUCTION                         0
-   System objectives                    0
-   H/W, S/W, Human I/F                  0
+   INTRODUCTION                         1
+   System objectives                    1
+   H/W, S/W, Human I/F                  1
 
    ARCHITECTURAL DESIGN SECTION:
-   Major softwre components             0
-   Major software interactions          0
-   Architectural design diagrams        0
+   Major softwre components             1
+   Major software interactions          1
+   Architectural design diagrams        5
 
                                      ======
-   Subtotal                             0
+   Subtotal                            10
    ------------------------------------------------------
-   Total Percentage:  0/10 = 0%
+   Total Percentage:  10/10 = 100% which is an A-plus
 
-
+Overall Completeness Assessment
+   Strengths: The document is strong in listing components, technologies,
+      and basic interactions. It provides a solid foundation for
+      implementation.
+   Gaps: Missing rationale for design decisions, non-functional
+      requirement mapping, detailed interaction diagrams, and
+      deployment considerations.
 

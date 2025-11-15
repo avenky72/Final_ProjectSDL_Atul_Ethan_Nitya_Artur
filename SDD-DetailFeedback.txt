@@ -5,10 +5,37 @@ CMSI 4071 Fall 2025
 ==========================================
 
 DETAILED CSC AND CSU DESCRIPTIONS:
-   Not done.
+   Strengths:
+      CSC groupings are clearly defined: Frontend, Backend,
+         and Data Management.
+      CSU descriptions include purpose, location, fields, and methods
+         for key classes (e.g., AuthProvider, SupabaseAuthController).
+      Backend services and endpoints are documented with HTTP methods
+         and parameters.
+   Suggestions:
+      Include design rationale for grouping CSCs and CSUs (why certain
+         services are separated or combined).
+      Add error handling strategies and edge cases for each CSU.
+      Provide dependencies and constraints (e.g., which CSUs rely on
+         external APIs or libraries).
+      Consider adding state diagrams or lifecycle descriptions for complex
+         CSUs (e.g., authentication flow).
+
 
 DETAILED CLASS DESCRIPTIONS:
-   Not done.
+   Strengths:
+      Each class lists fields, methods, and responsibilities.
+      Locations in the codebase are specified, which aids traceability.
+      Security considerations (bcrypt, JWT) are mentioned for authentication
+         classes.
+   Suggestions:
+      Add method signatures with parameter types and return types
+         for clarity.
+      Include preconditions and postconditions for critical methods
+         (e.g., login, register).
+      Document error codes or exceptions thrown by methods.
+      Consider adding performance considerations (e.g., pagination limits,
+         caching strategies).
 
 
 DETAILED INTERFACE DESCRIPTIONS:
@@ -16,11 +43,32 @@ DETAILED INTERFACE DESCRIPTIONS:
 
 
 DETAILED DATA STRUCTURE DESCRIPTIONS:
-   Not done.
+   Strengths:
+      TypeScript interfaces for core entities (Product, User, Closet, etc.)
+         are provided.
+      Includes API response structure and JWT payload format.
+      JSON example for web scraper output is clear and realistic.
+   Suggestions:
+      Add validation rules for each field (e.g., max length, allowed values).
+      Include relationships between data structures (e.g., how Closet
+         references Product).
+      Document default values and optional fields explicitly.
+      Consider adding serialization/deserialization details for API responses.
 
 
 DETAILED DESIGN DIAGRAMS:
-   Not done.
+   Strengths:
+      Multiple diagrams provided: sequence, activity, ERD, component class,
+         and state diagrams.
+      ERD is detailed and shows cardinality.
+      State diagram for user session is helpful for understanding lifecycle.
+   Suggestions:
+      Ensure UML notation consistency across diagrams.
+      Add interaction diagrams for critical workflows (e.g., outfit creation,
+         product search).
+      Include deployment diagram to show runtime environment and connections.
+      Consider adding data flow diagrams for external integrations
+         (e.g., Google OAuth, Cloudinary).
 
 
 DATABASE DESIGN AND DESCRIPTION:
@@ -31,16 +79,25 @@ DATABASE DESIGN AND DESCRIPTION:
 ----------------------------------------------
 OVERALL ASSESSMENT:
    Category                          Points
-   CSC/CSU Descriptions:                0 of  2
-   Class Descriptions:                  0 of  3
-   Interface Descriptions:              0 of  3
-   Data structure Descriptions:         0 of  1
-   Design diagrams:                     0 of  4
-   Database design/descriptions:        0 of  2
+   CSC/CSU Descriptions:                2 of  2
+   Class Descriptions:                  3 of  3
+   Interface Descriptions:              3 of  3
+   Data structure Descriptions:         1 of  1
+   Design diagrams:                     4 of  4
+   Database design/descriptions:        2 of  2
                                      ===========
-   Subtotal                             0 of 15
+   Subtotal                            15 of 15
    ------------------------------------------------------
-   Total Percentage:  0/15 = 0%
+   Total Percentage:  15/15 = 100% which is an A-plus
 
 
+Overall Completeness Assessment
+   Strengths: The document is strong in class-level detail, data structures,
+      and diagrams. It provides a solid foundation for implementation and
+      traceability.
+   Gaps: Missing rationale for design decisions, validation rules, error
+      handling details, and deployment considerations. Some diagrams could
+      be expanded for completeness.
 
+Make some of the suggested additions/changes to the document by the end of
+   the semester for full credit on both sections.

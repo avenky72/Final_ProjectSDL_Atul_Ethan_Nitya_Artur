@@ -127,7 +127,7 @@ Create closet → Frontend sends closet data → Backend validates → Database 
 6.2.3 Architectural Design Diagrams
 ┌─────────────────────────────────────────┐
 │         Client Browser (Frontend)       │
-│  Next.js 15 + React 19 + Tailwind CSS  │
+│  Next.js 15 + React 19 + Tailwind CSS   │
 │                                         │
 │  - Authentication UI                    │
 │  - Product Display Grid                 │
@@ -544,7 +544,7 @@ START
   ↓
 [User navigates to home page]
   ↓
-[Check if user is authenticated] 
+[Check if user is authenticated]
   ↓ No → [Redirect to /auth]
   ↓ Yes
 [Fetch products from API]
@@ -576,7 +576,7 @@ closet_products ← (∞) products
                         │ (∞)
                         ↓ (1)
                       brands
-                        
+
 products (∞) ─── (1) categories
   │
   │ (∞)
