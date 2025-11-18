@@ -27,6 +27,10 @@ const createUrlHash = (url) => {
   return crypto.createHash('sha256').update(url).digest('hex');
 };
 
+
+
+
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 

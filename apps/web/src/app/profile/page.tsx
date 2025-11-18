@@ -2,265 +2,403 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-interface Closet {
-  id: number;
-  name: string;
-  description: string;
-  is_public: boolean;
-  cover_image: string | null;
-  outfit_count: number;
-  created_at: string;
+interface Product { 
+  id: number; 
+  title: string; 
+  description: string | null; 
+  url: string; 
+  price: number; 
+  currency: string; 
+  images: string[] | null; 
+  in_stock: boolean; 
+  category_id: number | null; 
+  brand_id: number | null; 
+  gender: string | null;
+  colors: string[] | null;
+  brand_name?: string;
+  category_name?: string;
 }
 
-export default function ProfilePage() {
-  const router = useRouter();
+interface Brand {
+  id: number;
+  name: string;
+}
+
+interface Category {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+interface OutfitCreation {
+  closetId: number;
+  closetName: string;
+  mode: string;
+  selectedProducts: any[];
+}
+
+export default function HomePage() {
   const { user, token, logout } = useAuth();
-  const [closets, setClosets] = useState<Closet[]>([]);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newCloset, setNewCloset] = useState({
-    name: '',
-    description: '',
-    is_public: false
-  });
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  
+  // Filter states
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedBrand, setSelectedBrand] = useState('');
+  const [priceRange, setPriceRange] = useState({ min: '', max: '' });
+  
+  // Outfit creation mode
+  const isOutfitMode = searchParams.get('outfit-mode') === 'true';
+  const viewOutfitId = searchParams.get('view-outfit');
+  const [outfitCreation, setOutfitCreation] = useState<OutfitCreation | null>(null);
+  const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
+  const [outfitName, setOutfitName] = useState('');
 
   useEffect(() => {
-    if (!token) {
-      router.push('/auth');
-      return;
+    fetchProducts();
+    fetchFilters();
+    
+    // Check if we're in outfit creation mode
+    if (isOutfitMode) {
+      const creation = sessionStorage.getItem('outfitCreation');
+      if (creation) {
+        const parsed = JSON.parse(creation);
+        setOutfitCreation(parsed);
+        setSelectedProducts(parsed.selectedProducts || []);
+      }
     }
-    fetchClosets();
-  }, [token]);
+    
+    // Check if viewing an outfit
+    if (viewOutfitId) {
+      fetchOutfitDetails(viewOutfitId);
+    }
+  }, [isOutfitMode, viewOutfitId]);
 
-  const fetchClosets = async () => {
+  const fetchProducts = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/closets', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      let url = 'http://localhost:3001/api/products?';
+      if (selectedCategory) url += `category=${selectedCategory}&`;
+      if (selectedBrand) url += `brand=${selectedBrand}&`;
+      if (priceRange.min) url += `minPrice=${priceRange.min}&`;
+      if (priceRange.max) url += `maxPrice=${priceRange.max}&`;
+      
+      const res = await fetch(url);
       const data = await res.json();
-      setClosets(data.closets || []);
+      setProducts(data.products || []);
     } catch (error) {
-      console.error('Error fetching closets:', error);
+      console.error('Error fetching products:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateCloset = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const fetchFilters = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/closets', {
+      const [catRes, brandRes] = await Promise.all([
+        fetch('http://localhost:3001/api/categories'),
+        fetch('http://localhost:3001/api/brands')
+      ]);
+      
+      if (catRes.ok) {
+        const catData = await catRes.json();
+        setCategories(catData.categories || catData || []);
+      }
+      
+      if (brandRes.ok) {
+        const brandData = await brandRes.json();
+        setBrands(brandData.brands || brandData || []);
+      }
+    } catch (error) {
+      console.error('Error fetching filters:', error);
+    }
+  };
+
+  const fetchOutfitDetails = async (outfitId: string) => {
+    try {
+      const outfit = sessionStorage.getItem('viewOutfit');
+      if (!outfit) return;
+      
+      const parsed = JSON.parse(outfit);
+      const res = await fetch(`http://localhost:3001/api/closets/${parsed.closetId}/outfits/${outfitId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setSelectedProducts(data.products || []);
+      setOutfitName(data.outfit?.name || 'Viewing Outfit');
+    } catch (error) {
+      console.error('Error fetching outfit:', error);
+    }
+  };
+
+  // Toggle product selection for outfit
+  const toggleProductSelection = (product: Product) => {
+    if (viewOutfitId) return; // Don't allow changes when viewing
+    
+    setSelectedProducts(prev => {
+      const exists = prev.find(p => p.id === product.id);
+      if (exists) {
+        return prev.filter(p => p.id !== product.id);
+      } else {
+        return [...prev, product];
+      }
+    });
+  };
+
+  // Save outfit
+  const saveOutfit = async () => {
+    if (!outfitName || selectedProducts.length === 0 || !outfitCreation) {
+      alert('Please name your outfit and select at least one product');
+      return;
+    }
+
+    try {
+      // Create outfit
+      const outfitRes = await fetch(`http://localhost:3001/api/closets/${outfitCreation.closetId}/outfits`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(newCloset)
+        body: JSON.stringify({
+          name: outfitName,
+          description: `${selectedProducts.length} items`
+        })
       });
-      
-      if (res.ok) {
-        setShowCreateModal(false);
-        setNewCloset({ name: '', description: '', is_public: false });
-        fetchClosets();
-      }
-    } catch (error) {
-      console.error('Error creating closet:', error);
-    }
-  };
 
-  const handleDeleteCloset = async (closetId: number) => {
-    if (!confirm('Are you sure you want to delete this closet?')) return;
-    
-    try {
-      const res = await fetch(`http://localhost:3001/api/closets/${closetId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
+      if (outfitRes.ok) {
+        const { outfit } = await outfitRes.json();
+        
+        // Add products to outfit
+        for (let i = 0; i < selectedProducts.length; i++) {
+          await fetch(`http://localhost:3001/api/closets/${outfitCreation.closetId}/outfits/${outfit.id}/products`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              product_id: selectedProducts[i].id,
+              position: i
+            })
+          });
         }
-      });
-      
-      if (res.ok) {
-        fetchClosets();
+        
+        // Clear session and redirect
+        sessionStorage.removeItem('outfitCreation');
+        router.push('/profile');
       }
     } catch (error) {
-      console.error('Error deleting closet:', error);
+      console.error('Error saving outfit:', error);
+      alert('Failed to save outfit');
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    router.push('/auth');
+  // Cancel outfit creation
+  const cancelOutfitCreation = () => {
+    sessionStorage.removeItem('outfitCreation');
+    sessionStorage.removeItem('viewOutfit');
+    router.push('/profile');
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
-      </div>
-    );
-  }
+  // Apply filters
+  useEffect(() => {
+    fetchProducts();
+  }, [selectedCategory, selectedBrand, priceRange]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-white">
+      {/* Header */}
+      <header className="border-b px-4 py-4 sticky top-0 bg-white z-40">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Couture Closet</h1>
+          <div className="flex gap-4 items-center">
+            {user && <span className="text-sm text-gray-600">{user.email}</span>}
             <button
-              onClick={() => router.push('/')}
-              className="text-blue-600 hover:text-blue-800"
+              onClick={() => router.push(user ? '/profile' : '/auth')}
+              className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
             >
-              ← Back to Products
+              {user ? 'My Profile' : 'Sign In'}
             </button>
-            <h1 className="text-2xl font-bold">My Profile</h1>
           </div>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 text-sm text-red-600 hover:text-red-800"
-          >
-            Logout
-          </button>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-2">Welcome, {user?.full_name || user?.email}!</h2>
-          <p className="text-gray-600">{user?.email}</p>
-        </div>
-
-        <div className="mb-6 flex justify-between items-center">
-          <h2 className="text-2xl font-bold">My Closets</h2>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-          >
-            + Create New Closet
-          </button>
-        </div>
-
-        {closets.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-12 text-center">
-            <p className="text-gray-500 mb-4">You don't have any closets yet.</p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="bg-blue-600 text-white px-6 py-3 rounded hover:bg-blue-700"
-            >
-              Create Your First Closet
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {closets.map((closet) => (
-              <div
-                key={closet.id}
-                className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow"
-              >
-                <div
-                  className="h-48 bg-gradient-to-br from-blue-400 to-purple-500"
-                  style={{
-                    backgroundImage: closet.cover_image ? `url(${closet.cover_image})` : undefined,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center'
-                  }}
-                />
-
-                <div className="p-4">
-                  <h3 className="text-lg font-semibold mb-2">{closet.name}</h3>
-                  {closet.description && (
-                    <p className="text-gray-600 text-sm mb-3">{closet.description}</p>
-                  )}
-                  
-                  <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
-                    <span>{closet.outfit_count} outfit{closet.outfit_count !== 1 ? 's' : ''}</span>
-                    <span>{closet.is_public ? '🌐 Public' : '🔒 Private'}</span>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => router.push(`/profile/closets/${closet.id}`)}
-                      className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm"
-                    >
-                      View Closet
-                    </button>
-                    <button
-                      onClick={() => handleDeleteCloset(closet.id)}
-                      className="px-4 py-2 text-red-600 hover:bg-red-50 rounded text-sm"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </main>
-
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-xl font-bold mb-4">Create New Closet</h3>
-            
-            <form onSubmit={handleCreateCloset}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">
-                  Closet Name *
-                </label>
+      {/* Outfit Creation Bar */}
+      {(isOutfitMode || viewOutfitId) && (
+        <div className="bg-blue-50 border-b border-blue-200 px-4 py-3">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="font-medium">
+                {viewOutfitId ? '👁️ Viewing Outfit' : '✨ Creating Outfit'}
+                {outfitCreation?.closetName && ` for ${outfitCreation.closetName}`}
+              </span>
+              {!viewOutfitId && (
                 <input
                   type="text"
-                  value={newCloset.name}
-                  onChange={(e) => setNewCloset({ ...newCloset, name: e.target.value })}
-                  className="w-full px-3 py-2 border rounded"
-                  placeholder="e.g., Winter Wardrobe"
-                  required
+                  placeholder="Name your outfit..."
+                  value={outfitName}
+                  onChange={(e) => setOutfitName(e.target.value)}
+                  className="px-3 py-1 border rounded"
                 />
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">
-                  Description
-                </label>
-                <textarea
-                  value={newCloset.description}
-                  onChange={(e) => setNewCloset({ ...newCloset, description: e.target.value })}
-                  className="w-full px-3 py-2 border rounded"
-                  placeholder="Describe your closet..."
-                  rows={3}
-                />
-              </div>
-
-              <div className="mb-6">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={newCloset.is_public}
-                    onChange={(e) => setNewCloset({ ...newCloset, is_public: e.target.checked })}
-                    className="mr-2"
-                  />
-                  <span className="text-sm">Make this closet public</span>
-                </label>
-              </div>
-
-              <div className="flex gap-3">
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm">
+                {selectedProducts.length} items selected
+              </span>
+              {!viewOutfitId && (
                 <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="flex-1 px-4 py-2 border rounded hover:bg-gray-50"
+                  onClick={saveOutfit}
+                  disabled={selectedProducts.length === 0 || !outfitName}
+                  className="bg-blue-600 text-white px-4 py-1 rounded disabled:bg-gray-400 hover:bg-blue-700"
                 >
-                  Cancel
+                  Save Outfit
                 </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                >
-                  Create
-                </button>
-              </div>
-            </form>
+              )}
+              <button
+                onClick={cancelOutfitCreation}
+                className="text-gray-600 hover:text-black"
+              >
+                {viewOutfitId ? 'Back' : 'Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-7xl mx-auto flex gap-6 px-4 py-6">
+        {/* Filters Sidebar */}
+        <aside className="w-64 flex-shrink-0">
+          <h3 className="font-semibold mb-4">Filters</h3>
+          
+          {/* Category Filter */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium mb-2">Category</label>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full p-2 border rounded"
+            >
+              <option value="">All Categories</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Brand Filter */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium mb-2">Brand</label>
+            <select
+              value={selectedBrand}
+              onChange={(e) => setSelectedBrand(e.target.value)}
+              className="w-full p-2 border rounded"
+            >
+              <option value="">All Brands</option>
+              {brands.map(brand => (
+                <option key={brand.id} value={brand.id}>{brand.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Price Range */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium mb-2">Price Range</label>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                placeholder="Min"
+                value={priceRange.min}
+                onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
+                className="w-1/2 p-2 border rounded"
+              />
+              <input
+                type="number"
+                placeholder="Max"
+                value={priceRange.max}
+                onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
+                className="w-1/2 p-2 border rounded"
+              />
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              setSelectedCategory('');
+              setSelectedBrand('');
+              setPriceRange({ min: '', max: '' });
+            }}
+            className="text-sm text-gray-600 hover:text-black underline"
+          >
+            Clear all filters
+          </button>
+        </aside>
+
+        {/* Products Grid */}
+        <main className="flex-1">
+          {loading ? (
+            <div className="text-center py-12">Loading...</div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {products.map(product => {
+                const isSelected = selectedProducts.some(p => p.id === product.id);
+                return (
+                  <div
+                    key={product.id}
+                    onClick={() => (isOutfitMode && !viewOutfitId) ? toggleProductSelection(product) : null}
+                    className={`
+                      border rounded-lg p-3 transition
+                      ${isSelected ? 'border-blue-500 bg-blue-50' : 'hover:shadow-lg'}
+                      ${(isOutfitMode && !viewOutfitId) ? 'cursor-pointer' : ''}
+                    `}
+                  >
+                    <div className="aspect-square bg-gray-200 rounded mb-2 relative">
+                      {product.images?.[0] && (
+                        <img 
+                          src={product.images[0]} 
+                          alt={product.title}
+                          className="w-full h-full object-cover rounded"
+                        />
+                      )}
+                      {isSelected && (
+                        <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center">
+                          ✓
+                        </div>
+                      )}
+                    </div>
+                    <h3 className="font-medium text-sm truncate">{product.title}</h3>
+                    <p className="text-gray-600">${product.price}</p>
+                    {product.brand_name && (
+                      <p className="text-xs text-gray-500">{product.brand_name}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* Selected Products Bar (Mobile/Bottom) */}
+      {isOutfitMode && !viewOutfitId && selectedProducts.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-4 md:hidden">
+          <div className="flex items-center justify-between">
+            <span className="font-medium">{selectedProducts.length} items</span>
+            <button
+              onClick={saveOutfit}
+              disabled={!outfitName}
+              className="bg-blue-600 text-white px-6 py-2 rounded disabled:bg-gray-400"
+            >
+              Save Outfit
+            </button>
           </div>
         </div>
       )}
