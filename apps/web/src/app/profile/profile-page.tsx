@@ -107,11 +107,13 @@ export default function ProfilePage() {
         },
         body: JSON.stringify({
           name: `${tag} ${name}`,
-          description: `My ${tag.toLowerCase()} collection`
+          description: `My ${tag.toLowerCase()} collection`,
+          is_public: false
         })
       });
+      
       if (res.ok) {
-        fetchClosets();
+        await fetchClosets();
         setShowCreateCloset(false);
       }
     } catch (error) {
@@ -156,57 +158,87 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="mb-8 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">My Profile</h1>
-          <p className="text-gray-600">Welcome back, {user?.email}</p>
-        </div>
-        <button
-          onClick={() => router.push('/')}
-          className="text-gray-600 hover:text-black"
-        >
-          Browse Products →
-        </button>
-      </div>
-
-      {/* Closets Grid */}
-      {!selectedCloset && (
-        <div className="mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">My Closets</h2>
-            <button
-              onClick={() => setShowCreateCloset(true)}
-              className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
-            >
-              + New Closet
-            </button>
+      <header className="bg-white border-b px-4 py-4">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold">My Profile</h1>
+            <p className="text-gray-600">Welcome back, {user?.email}</p>
           </div>
+          <button
+            onClick={() => router.push('/')}
+            className="bg-gray-100 px-4 py-2 rounded hover:bg-gray-200"
+          >
+            Browse Products
+          </button>
+        </div>
+      </header>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {closets.map(closet => (
-              <div
-                key={closet.id}
-                onClick={() => handleClosetClick(closet)}
-                className="border rounded-lg p-4 cursor-pointer hover:shadow-lg transition bg-white"
+      <div className="max-w-7xl mx-auto p-6">
+        {/* Closets Grid View */}
+        {!selectedCloset && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold">My Closets</h2>
+              <button
+                onClick={() => setShowCreateCloset(true)}
+                className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
               >
-                <div className="h-32 bg-gradient-to-br from-gray-100 to-gray-200 rounded mb-2 flex items-center justify-center">
-                  <span className="text-4xl">👗</span>
-                </div>
-                <h3 className="font-medium">{closet.name}</h3>
-                <p className="text-sm text-gray-500">{closet.outfit_count || 0} outfits</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+                + New Closet
+              </button>
+            </div>
 
-      {/* Selected Closet View */}
-      {selectedCloset && (
-        <div className="bg-white rounded-lg p-6">
-          <div className="flex justify-between items-center mb-6">
-            <div className="flex items-center gap-4">
+            {closets.length === 0 ? (
+              <div className="bg-white rounded-lg p-12 text-center">
+                <div className="text-gray-400 mb-4">
+                  <svg className="w-24 h-24 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium mb-2">No closets yet</h3>
+                <p className="text-gray-500 mb-4">Create your first closet to start organizing outfits</p>
+                <button
+                  onClick={() => setShowCreateCloset(true)}
+                  className="bg-black text-white px-6 py-2 rounded hover:bg-gray-800"
+                >
+                  Create Your First Closet
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {closets.map(closet => (
+                  <div
+                    key={closet.id}
+                    onClick={() => handleClosetClick(closet)}
+                    className="bg-white rounded-lg border hover:shadow-lg transition cursor-pointer overflow-hidden"
+                  >
+                    <div className="h-32 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                      <span className="text-5xl opacity-50">👗</span>
+                    </div>
+                    <div className="p-4">
+                      <h3 className="font-medium text-lg">{closet.name}</h3>
+                      {closet.description && (
+                        <p className="text-sm text-gray-500 mt-1">{closet.description}</p>
+                      )}
+                      <div className="flex justify-between items-center mt-3">
+                        <span className="text-sm text-gray-600">{closet.outfit_count || 0} outfits</span>
+                        <span className="text-xs text-gray-400">
+                          {closet.is_public ? '🌐 Public' : '🔒 Private'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Selected Closet View */}
+        {selectedCloset && (
+          <div>
+            <div className="flex items-center gap-4 mb-6">
               <button 
                 onClick={() => {
                   setSelectedCloset(null);
@@ -214,60 +246,86 @@ export default function ProfilePage() {
                 }}
                 className="text-gray-600 hover:text-black"
               >
-                ← Back
+                ← Back to Closets
               </button>
-              <h2 className="text-2xl font-bold">{selectedCloset.name}</h2>
             </div>
-            
-            <button
-              onClick={startOutfitCreation}
-              className="bg-black text-white px-6 py-2 rounded hover:bg-gray-800"
-            >
-              + Create New Outfit
-            </button>
-          </div>
 
-          {/* Outfits Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {outfits.length === 0 ? (
-              <div className="col-span-full border-2 border-dashed rounded-lg p-12 text-center text-gray-400">
-                <p className="mb-4">No outfits yet</p>
+            <div className="bg-white rounded-lg p-6 mb-6">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-bold">{selectedCloset.name}</h2>
+                  {selectedCloset.description && (
+                    <p className="text-gray-600 mt-2">{selectedCloset.description}</p>
+                  )}
+                </div>
                 <button
                   onClick={startOutfitCreation}
-                  className="text-black underline hover:no-underline"
+                  className="bg-black text-white px-6 py-2 rounded hover:bg-gray-800"
                 >
-                  Create your first outfit
+                  + Create New Outfit
+                </button>
+              </div>
+            </div>
+
+            {/* Outfits Grid */}
+            {outfits.length === 0 ? (
+              <div className="bg-white rounded-lg p-12 text-center">
+                <div className="text-gray-400 mb-4">
+                  <svg className="w-20 h-20 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium mb-2">No outfits yet</h3>
+                <p className="text-gray-500 mb-4">Start creating outfits from your favorite products</p>
+                <button
+                  onClick={startOutfitCreation}
+                  className="bg-black text-white px-6 py-2 rounded hover:bg-gray-800"
+                >
+                  Create Your First Outfit
                 </button>
               </div>
             ) : (
-              outfits.map(outfit => (
-                <div
-                  key={outfit.id}
-                  className="border rounded-lg p-4 hover:shadow-lg transition cursor-pointer"
-                  onClick={() => viewOutfit(outfit.id)}
-                >
-                  <div className="h-32 bg-gray-100 rounded mb-2 grid grid-cols-2 gap-1 p-2">
-                    {[...Array(4)].map((_, i) => (
-                      <div key={i} className="bg-gray-200 rounded"></div>
-                    ))}
-                  </div>
-                  <h3 className="font-medium">{outfit.name}</h3>
-                  <p className="text-sm text-gray-500">{outfit.product_count || 0} items</p>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteOutfit(outfit.id);
-                    }}
-                    className="text-red-500 text-sm mt-2 hover:underline"
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {outfits.map(outfit => (
+                  <div
+                    key={outfit.id}
+                    className="bg-white border rounded-lg p-4 hover:shadow-lg transition cursor-pointer"
+                    onClick={() => viewOutfit(outfit.id)}
                   >
-                    Delete
-                  </button>
-                </div>
-              ))
+                    <div className="h-32 bg-gray-100 rounded mb-3 grid grid-cols-2 gap-1 p-2">
+                      {[...Array(4)].map((_, i) => (
+                        <div key={i} className="bg-gray-200 rounded"></div>
+                      ))}
+                    </div>
+                    <h3 className="font-medium">{outfit.name}</h3>
+                    <p className="text-sm text-gray-500">{outfit.product_count || 0} items</p>
+                    <div className="mt-3 flex justify-between">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          viewOutfit(outfit.id);
+                        }}
+                        className="text-blue-600 text-sm hover:underline"
+                      >
+                        View
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteOutfit(outfit.id);
+                        }}
+                        className="text-red-500 text-sm hover:underline"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Create Closet Modal */}
       {showCreateCloset && (
@@ -281,7 +339,7 @@ export default function ProfilePage() {
   );
 }
 
-// Simple Create Closet Modal Component
+// Create Closet Modal Component
 interface CreateClosetModalProps {
   tags: string[];
   onClose: () => void;
@@ -295,7 +353,7 @@ function CreateClosetModal({ tags, onClose, onCreate }: CreateClosetModalProps) 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (name.trim()) {
-      onCreate(name, selectedTag);
+      onCreate(name.trim(), selectedTag);
     }
   };
 
@@ -307,7 +365,7 @@ function CreateClosetModal({ tags, onClose, onCreate }: CreateClosetModalProps) 
         <form onSubmit={handleSubmit}>
           <input
             type="text"
-            placeholder="Closet Name"
+            placeholder="Closet Name (e.g., 'Favorites')"
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="w-full p-2 border rounded mb-4"

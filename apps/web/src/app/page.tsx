@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 
 interface Product { 
@@ -21,11 +21,6 @@ interface Product {
   category_name?: string;
 }
 
-interface ProductsResponse { 
-  products: Product[]; 
-  pagination: { page: number; limit: number; total: number; pages: number; }; 
-}
-
 interface Brand {
   id: number;
   name: string;
@@ -37,435 +32,408 @@ interface Category {
   slug: string;
 }
 
-const colorHexMap: { [key: string]: string } = {
-  'black': '#000000',
-  'white': '#FFFFFF',
-  'gray': '#9CA3AF',
-  'grey': '#9CA3AF',
-  'beige': '#D4C5B9',
-  'brown': '#92684D',
-  'red': '#DC2626',
-  'pink': '#EC4899',
-  'blue': '#3B82F6',
-  'navy': '#1E3A8A',
-  'green': '#16A34A',
-  'yellow': '#EAB308',
-  'orange': '#EA580C',
-  'purple': '#9333EA',
-  'tan': '#D2B48C',
-  'cream': '#FFFDD0',
-  'ivory': '#FFFFF0',
-  'gold': '#FFD700',
-  'silver': '#C0C0C0',
-};
+interface OutfitCreation {
+  closetId: number;
+  closetName: string;
+  mode: string;
+  selectedProducts: any[];
+}
 
-export default function Page() {
+export default function HomePage() {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const searchParams = useSearchParams();
+  const { user, logout, token } = useAuth();
   
   const [products, setProducts] = useState<Product[]>([]);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   
+  // Filters
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [genders, setGenders] = useState<string[]>([]);
-  const [colors, setColors] = useState<string[]>([]);
+  const [selectedBrand, setSelectedBrand] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [priceRange, setPriceRange] = useState({ min: '', max: '' });
   
-  const [selectedBrand, setSelectedBrand] = useState<number | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedGender, setSelectedGender] = useState('');
-  const [selectedColor, setSelectedColor] = useState('');
+  // Outfit Creation Mode
+  const isOutfitMode = searchParams.get('outfit-mode') === 'true';
+  const viewOutfitId = searchParams.get('view-outfit');
+  const [outfitCreation, setOutfitCreation] = useState<OutfitCreation | null>(null);
+  const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
+  const [outfitName, setOutfitName] = useState('');
 
   useEffect(() => {
     const fetchFilterOptions = async () => {
       try {
-        const [brandsRes, categoriesRes, gendersRes, colorsRes] = await Promise.all([
+        const [brandsRes, categoriesRes] = await Promise.all([
           fetch('http://localhost:3001/api/brands'),
           fetch('http://localhost:3001/api/categories'),
-          fetch('http://localhost:3001/api/filters/genders'),
-          fetch('http://localhost:3001/api/filters/colors'),
         ]);
 
-        if (brandsRes.ok) setBrands(await brandsRes.json());
-        if (categoriesRes.ok) setCategories(await categoriesRes.json());
-        if (gendersRes.ok) setGenders(await gendersRes.json());
-        if (colorsRes.ok) setColors(await colorsRes.json());
+        if (brandsRes.ok) {
+          const brandsData = await brandsRes.json();
+          setBrands(brandsData);
+        }
+        
+        if (categoriesRes.ok) {
+          const categoriesData = await categoriesRes.json();
+          setCategories(categoriesData);
+        }
       } catch (error) {
-        console.error('Error fetching filter options:', error);
+        console.error('Error fetching filters:', error);
       }
     };
 
     fetchFilterOptions();
-  }, []);
+    fetchProducts();
+    
+    // Check if we're in outfit creation mode
+    if (isOutfitMode) {
+      const creation = sessionStorage.getItem('outfitCreation');
+      if (creation) {
+        const parsed = JSON.parse(creation);
+        setOutfitCreation(parsed);
+        setSelectedProducts(parsed.selectedProducts || []);
+      }
+    }
+    
+    // Check if viewing an outfit
+    if (viewOutfitId) {
+      fetchOutfitDetails(viewOutfitId);
+    }
+  }, [isOutfitMode, viewOutfitId]);
 
-  useEffect(() => {
-    if (!user) {
-      router.push('/auth');
+  const fetchProducts = async (pageNum = 1) => {
+    try {
+      setLoading(pageNum === 1);
+      
+      let url = `http://localhost:3001/api/products?page=${pageNum}&limit=24`;
+      if (selectedCategory) url += `&category=${selectedCategory}`;
+      if (selectedBrand) url += `&brand=${selectedBrand}`;
+      if (priceRange.min) url += `&minPrice=${priceRange.min}`;
+      if (priceRange.max) url += `&maxPrice=${priceRange.max}`;
+
+      const res = await fetch(url);
+      const data = await res.json();
+      
+      if (pageNum === 1) {
+        setProducts(data.products || []);
+      } else {
+        setProducts(prev => [...prev, ...(data.products || [])]);
+      }
+      
+      setHasMore(data.pagination?.page < data.pagination?.pages);
+    } catch (error) {
+      console.error('Error fetching products:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchOutfitDetails = async (outfitId: string) => {
+    try {
+      const outfit = sessionStorage.getItem('viewOutfit');
+      if (!outfit || !token) return;
+      
+      const parsed = JSON.parse(outfit);
+      const res = await fetch(`http://localhost:3001/api/closets/${parsed.closetId}/outfits/${outfitId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setSelectedProducts(data.products || []);
+      setOutfitName(data.outfit?.name || 'Viewing Outfit');
+    } catch (error) {
+      console.error('Error fetching outfit:', error);
+    }
+  };
+
+  const toggleProductSelection = (product: Product) => {
+    if (viewOutfitId) return; // Don't allow changes when viewing
+    
+    setSelectedProducts(prev => {
+      const exists = prev.find(p => p.id === product.id);
+      if (exists) {
+        return prev.filter(p => p.id !== product.id);
+      } else {
+        return [...prev, product];
+      }
+    });
+  };
+
+  const saveOutfit = async () => {
+    if (!outfitName || selectedProducts.length === 0 || !outfitCreation || !token) {
+      alert('Please name your outfit and select at least one product');
       return;
     }
 
-    const fetchProducts = async () => {
-      if (page > 1) setLoadingMore(true);
-      
-      try {
-        const params = new URLSearchParams({
-          page: page.toString(),
-          limit: '24',
-        });
+    try {
+      // Create outfit
+      const outfitRes = await fetch(`http://localhost:3001/api/closets/${outfitCreation.closetId}/outfits`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: outfitName,
+          description: `${selectedProducts.length} items`
+        })
+      });
+
+      if (outfitRes.ok) {
+        const { outfit } = await outfitRes.json();
         
-        if (selectedCategory) params.append('category', selectedCategory);
-        if (selectedBrand) params.append('brand', selectedBrand.toString());
-        if (selectedGender) params.append('gender', selectedGender);
-        
-        const res = await fetch(`http://localhost:3001/api/products?${params}`);
-        if (!res.ok) throw new Error();
-        
-        const data: ProductsResponse = await res.json();
-        
-        if (page === 1) {
-          setProducts(data.products || []);
-        } else {
-          setProducts(prev => [...prev, ...(data.products || [])]);
+        // Add products to outfit
+        for (let i = 0; i < selectedProducts.length; i++) {
+          await fetch(`http://localhost:3001/api/closets/${outfitCreation.closetId}/outfits/${outfit.id}/products`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              product_id: selectedProducts[i].id,
+              position: i
+            })
+          });
         }
         
-        setHasMore(data.pagination.page < data.pagination.pages);
-        setError(null);
-      } catch {
-        setError('Could not load products.');
-      } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        // Clear session and redirect
+        sessionStorage.removeItem('outfitCreation');
+        router.push('/profile');
       }
-    };
+    } catch (error) {
+      console.error('Error saving outfit:', error);
+      alert('Failed to save outfit');
+    }
+  };
 
-    fetchProducts();
-  }, [user, router, page, selectedCategory, selectedBrand, selectedGender]);
+  const cancelOutfitCreation = () => {
+    sessionStorage.removeItem('outfitCreation');
+    sessionStorage.removeItem('viewOutfit');
+    router.push('/profile');
+  };
+
+  const handleLoadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchProducts(nextPage);
+  };
 
   useEffect(() => {
-    let filtered = [...products];
+    fetchProducts(1);
+  }, [selectedCategory, selectedBrand, priceRange]);
 
-    if (selectedColor) {
-      filtered = filtered.filter(product => 
-        product.colors && product.colors.some(color => 
-          color.toLowerCase().includes(selectedColor.toLowerCase())
-        )
-      );
-    }
-
-    setFilteredProducts(filtered);
-  }, [products, selectedColor]);
-
-  const handleBrandChange = (brandId: number | null) => {
-    setSelectedBrand(brandId);
-    setPage(1);
-    setProducts([]);
-    setLoading(true);
+  const handleLogout = () => {
+    logout();
+    router.push('/auth');
   };
-
-  const handleCategoryChange = (slug: string) => {
-    setSelectedCategory(slug);
-    setPage(1);
-    setProducts([]);
-    setLoading(true);
-  };
-
-  const handleGenderChange = (value: string) => {
-    setSelectedGender(value);
-    setPage(1);
-    setProducts([]);
-    setLoading(true);
-  };
-
-  const handleColorChange = (value: string) => {
-    setSelectedColor(value);
-  };
-
-  const clearAllFilters = () => {
-    handleBrandChange(null);
-    handleCategoryChange('');
-    handleGenderChange('');
-    handleColorChange('');
-  };
-
-  const getColorHex = (colorName: string): string => {
-    const lowerColor = colorName.toLowerCase();
-    return colorHexMap[lowerColor] || '#6B7280';
-  };
-
-  if (!user) return null;
-
-  if (loading) return <div className="flex justify-center items-center min-h-screen text-xl">Loading products...</div>;
-
-  if (error) return (
-    <div className="flex flex-col justify-center items-center min-h-screen gap-4">
-      <div className="text-xl text-red-600">Error</div>
-      <div className="text-gray-600">{error}</div>
-      <button onClick={() => location.reload()} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Retry</button>
-    </div>
-  );
-
-  const hasActiveFilters = selectedBrand || selectedCategory || selectedGender || selectedColor;
 
   return (
-    <div>
+    <div className="min-h-screen bg-white">
       {/* Header */}
-      <div className="bg-white border-b px-4 py-3 flex justify-between items-center sticky top-0 z-50 shadow-sm">
-        <h1 className="text-xl font-bold">Couture Closet</h1>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-600">Welcome, {user.full_name || user.email}</span>
-          <button 
-            onClick={() => router.push('/profile')}
-            className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            My Profile
-          </button>
-          <button 
-            onClick={logout}
-            className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300"
-          >
-            Logout
-          </button>
-        </div>
-      </div>
-
-      <div className="container mx-auto px-4 py-8">
-        {/* Filter Section */}
-        <div className="mb-8 space-y-6">
-          {/* Brand Filter */}
-          {brands.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold mb-3 text-gray-700 uppercase tracking-wider">Brand</h2>
-              <div className="flex flex-wrap gap-2">
+      <header className="border-b px-4 py-4">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Couture Closet</h1>
+          <div className="flex gap-4 items-center">
+            {user && <span className="text-sm text-gray-600">{user.email}</span>}
+            {user ? (
+              <div className="flex gap-2">
                 <button
-                  onClick={() => handleBrandChange(null)}
-                  className={`px-5 py-2 rounded-full font-medium transition-all ${
-                    selectedBrand === null
-                      ? 'bg-black text-white shadow-md'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
-                  }`}
+                  onClick={() => router.push('/profile')}
+                  className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
                 >
-                  All Brands
+                  My Profile
                 </button>
-                {brands.map((brand) => (
-                  <button
-                    key={brand.id}
-                    onClick={() => handleBrandChange(brand.id)}
-                    className={`px-5 py-2 rounded-full font-medium transition-all ${
-                      selectedBrand === brand.id
-                        ? 'bg-black text-white shadow-md'
-                        : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
-                    }`}
-                  >
-                    {brand.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Category Filter */}
-          {categories.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold mb-3 text-gray-700 uppercase tracking-wider">Category</h2>
-              <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => handleCategoryChange('')}
-                  className={`px-5 py-2 rounded-full font-medium transition-all ${
-                    selectedCategory === ''
-                      ? 'bg-black text-white shadow-md'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
-                  }`}
+                  onClick={handleLogout}
+                  className="border px-4 py-2 rounded hover:bg-gray-100"
                 >
-                  All Categories
+                  Sign Out
                 </button>
-                {categories.map((category) => (
-                  <button
-                    key={category.id}
-                    onClick={() => handleCategoryChange(category.slug)}
-                    className={`px-5 py-2 rounded-full font-medium transition-all ${
-                      selectedCategory === category.slug
-                        ? 'bg-black text-white shadow-md'
-                        : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
-                    }`}
-                  >
-                    {category.name}
-                  </button>
-                ))}
               </div>
-            </div>
-          )}
-
-          {/* Gender Filter */}
-          {genders.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold mb-3 text-gray-700 uppercase tracking-wider">Gender</h2>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => handleGenderChange('')}
-                  className={`px-5 py-2 rounded-full font-medium transition-all ${
-                    selectedGender === ''
-                      ? 'bg-black text-white shadow-md'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  All Genders
-                </button>
-                {genders.map((gender) => (
-                  <button
-                    key={gender}
-                    onClick={() => handleGenderChange(gender)}
-                    className={`px-5 py-2 rounded-full font-medium transition-all capitalize ${
-                      selectedGender === gender
-                        ? 'bg-black text-white shadow-md'
-                        : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
-                    }`}
-                  >
-                    {gender}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Color Filter */}
-          {colors.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold mb-3 text-gray-700 uppercase tracking-wider">Color</h2>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => handleColorChange('')}
-                  className={`px-5 py-2 rounded-full font-medium transition-all ${
-                    selectedColor === ''
-                      ? 'bg-black text-white shadow-md'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  All Colors
-                </button>
-                {colors.map((color) => (
-                  <button
-                    key={color}
-                    onClick={() => handleColorChange(color)}
-                    className={`px-5 py-2 rounded-full font-medium transition-all capitalize ${
-                      selectedColor === color
-                        ? 'bg-black text-white shadow-md'
-                        : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
-                    }`}
-                  >
-                    <span
-                      className="inline-block w-3 h-3 rounded-full mr-2 border border-gray-300"
-                      style={{ backgroundColor: getColorHex(color) }}
-                    />
-                    {color}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Clear Filters */}
-          {hasActiveFilters && (
-            <div className="flex justify-center">
+            ) : (
               <button
-                onClick={clearAllFilters}
-                className="px-6 py-2 text-sm text-red-600 border border-red-600 rounded hover:bg-red-50"
+                onClick={() => router.push('/auth')}
+                className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
               >
-                Clear All Filters
+                Sign In
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Outfit Creation Bar */}
+      {(isOutfitMode || viewOutfitId) && (
+        <div className="bg-blue-50 border-b border-blue-200 px-4 py-3">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="font-medium">
+                {viewOutfitId ? '👁️ Viewing Outfit' : '✨ Creating Outfit'}
+                {outfitCreation?.closetName && ` for ${outfitCreation.closetName}`}
+              </span>
+              {!viewOutfitId && (
+                <input
+                  type="text"
+                  placeholder="Name your outfit..."
+                  value={outfitName}
+                  onChange={(e) => setOutfitName(e.target.value)}
+                  className="px-3 py-1 border rounded bg-white"
+                />
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm bg-blue-100 px-3 py-1 rounded">
+                {selectedProducts.length} items selected
+              </span>
+              {!viewOutfitId && (
+                <button
+                  onClick={saveOutfit}
+                  disabled={selectedProducts.length === 0 || !outfitName}
+                  className="bg-blue-600 text-white px-6 py-2 rounded disabled:bg-gray-400 hover:bg-blue-700"
+                >
+                  Save Outfit
+                </button>
+              )}
+              <button
+                onClick={cancelOutfitCreation}
+                className="text-gray-600 hover:text-black"
+              >
+                {viewOutfitId ? '← Back to Profile' : 'Cancel'}
               </button>
             </div>
-          )}
+          </div>
         </div>
+      )}
 
-        {/* Products Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {filteredProducts.map((product) => (
-            <div key={product.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow group">
-              <div className="relative h-64 bg-gray-100 flex items-center justify-center overflow-hidden">
-                {product.images && product.images.length > 0 ? (
-                  <img 
-                    src={product.images[0]} 
-                    alt={product.title} 
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-                  />
-                ) : (
-                  <div className="text-gray-400">No image</div>
-                )}
-                {!product.in_stock && (
-                  <div className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded">
-                    Out of Stock
-                  </div>
-                )}
-              </div>
-              <div className="p-4">
-                <h3 className="font-semibold mb-2 line-clamp-2 text-gray-900">{product.title}</h3>
-                {product.description && (
-                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">{product.description}</p>
-                )}
-                
-                {product.colors && product.colors.length > 0 && (
-                  <div className="flex gap-1 mb-3">
-                    {product.colors.slice(0, 5).map((color, idx) => (
-                      <div
-                        key={idx}
-                        className={`w-5 h-5 rounded-full border ${color.toLowerCase() === 'white' ? 'border-gray-300' : 'border-gray-200'}`}
-                        style={{ backgroundColor: getColorHex(color) }}
-                        title={color}
-                      />
-                    ))}
-                    {product.colors.length > 5 && (
-                      <span className="text-xs text-gray-500 ml-1 self-center">+{product.colors.length - 5}</span>
-                    )}
-                  </div>
-                )}
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="flex gap-6">
+          {/* Filters Sidebar */}
+          <aside className="w-64 flex-shrink-0">
+            <h3 className="font-semibold mb-4">Filters</h3>
+            
+            {/* Category Filter */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-2">Category</label>
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="w-full p-2 border rounded"
+              >
+                <option value="">All Categories</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.slug}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
 
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-lg font-bold text-gray-900">{product.currency} {product.price}</span>
-                  {product.gender && (
-                    <span className="text-xs text-gray-500 capitalize">{product.gender}</span>
-                  )}
-                </div>
-                
-                <a 
-                  href={product.url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="block w-full text-center px-4 py-2 bg-black text-white rounded hover:bg-gray-800 transition-colors"
-                >
-                  View Product
-                </a>
+            {/* Brand Filter */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-2">Brand</label>
+              <select
+                value={selectedBrand}
+                onChange={(e) => setSelectedBrand(e.target.value)}
+                className="w-full p-2 border rounded"
+              >
+                <option value="">All Brands</option>
+                {brands.map(brand => (
+                  <option key={brand.id} value={brand.id}>{brand.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Price Range */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-2">Price Range</label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  placeholder="Min"
+                  value={priceRange.min}
+                  onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
+                  className="w-1/2 p-2 border rounded"
+                />
+                <input
+                  type="number"
+                  placeholder="Max"
+                  value={priceRange.max}
+                  onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
+                  className="w-1/2 p-2 border rounded"
+                />
               </div>
             </div>
-          ))}
+
+            <button
+              onClick={() => {
+                setSelectedCategory('');
+                setSelectedBrand('');
+                setPriceRange({ min: '', max: '' });
+              }}
+              className="text-sm text-gray-600 hover:text-black underline"
+            >
+              Clear all filters
+            </button>
+          </aside>
+
+          {/* Products Grid */}
+          <main className="flex-1">
+            {loading && products.length === 0 ? (
+              <div className="text-center py-12">Loading products...</div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {products.map(product => {
+                    const isSelected = selectedProducts.some(p => p.id === product.id);
+                    return (
+                      <div
+                        key={product.id}
+                        onClick={() => (isOutfitMode && !viewOutfitId) ? toggleProductSelection(product) : null}
+                        className={`
+                          border rounded-lg p-3 transition
+                          ${isSelected ? 'border-blue-500 bg-blue-50 shadow-lg' : 'hover:shadow-md'}
+                          ${(isOutfitMode && !viewOutfitId) ? 'cursor-pointer' : ''}
+                        `}
+                      >
+                        <div className="aspect-square bg-gray-200 rounded mb-2 relative overflow-hidden">
+                          {product.images?.[0] && (
+                            <img 
+                              src={product.images[0]} 
+                              alt={product.title}
+                              className="w-full h-full object-cover"
+                            />
+                          )}
+                          {isSelected && (
+                            <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center">
+                              ✓
+                            </div>
+                          )}
+                        </div>
+                        <h3 className="font-medium text-sm truncate">{product.title}</h3>
+                        <p className="text-gray-900 font-semibold">${product.price}</p>
+                        {product.brand_name && (
+                          <p className="text-xs text-gray-500">{product.brand_name}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {hasMore && !loading && (
+                  <div className="text-center mt-8">
+                    <button
+                      onClick={handleLoadMore}
+                      className="bg-gray-100 px-6 py-2 rounded hover:bg-gray-200"
+                    >
+                      Load More
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </main>
         </div>
-
-        {hasMore && (
-          <div className="flex justify-center mt-8">
-            <button 
-              onClick={() => setPage(p => p + 1)}
-              disabled={loadingMore}
-              className="px-6 py-3 bg-black text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-400 transition-colors"
-            >
-              {loadingMore ? 'Loading...' : 'Load More'}
-            </button>
-          </div>
-        )}
-
-        {!loading && filteredProducts.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-xl text-gray-600 mb-4">No products match your filters.</p>
-            <button 
-              onClick={clearAllFilters}
-              className="px-6 py-2 bg-black text-white rounded hover:bg-gray-800"
-            >
-              Clear Filters
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
