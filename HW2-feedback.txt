@@ -1,0 +1,52 @@
+
+
+HW 2 - Piloni & Miles Textbook
+CMSI 4071 Fall 2025
+
+Category        Weight     Earned
+===========    ========    ======
+Problem 1      [3 pts.]      3.0
+Problem 2      [4 pts.]      3.0
+Problem 3      [6 pts.]      5.0
+Problem 4      [9 pts.]      9.0
+Problem 5      [2 pts.]      2.0
+Problem 6      [7 pts.]      5.0
+Problem 7      [1 pt.]       0.0
+Problem 8      [3 pts.]      3.0
+Problem 9      [5 pts.]      5.0
+Problem 10     [4 pts.]      4.0
+
+      Subtotal [44 max]     44.0
+             Your Total     39.0 which is 88.64%
+
+         Letter grade   B-plus
+
+problem 1, Correct and clear, though grammar and spelling need improvement.
+
+problem 2, Needs correction — Agile phases are requirements, design,
+   implementation, testing, and review.  While initial planning helps,
+   repeating phases ensures adaptability and prevents costly rework.
+
+problem 3, Needs improvement — Waterfall phases are requirements, design,
+   implementation, verification, maintenance.  Waterfall phases occur
+   sequentially and include detailed documentation and risk analysis.  These
+   are essential for compliance in large or regulated projects.  Agile may
+   adopt similar rigor for safety-critical systems.
+
+problem 4, Good overall, though phrasing could be clearer.
+
+problem 6, Incorrect for second blank (User Story instead of Estimate) and
+   last blank (Blueskying instead of Planning Poker).
+
+problem 7, Needs correction — It’s an overly optimistic estimate assuming
+   no problems and even extra efficiencies.  Always plan for realistic
+   conditions and potential setbacks.
+
+Your answers show understanding of core concepts but need improvement in
+   accuracy and clarity for Agile and Waterfall phases, Problem 6, and
+   Problem 7.  Grammar and spelling should also be refined for
+   professionalism.  Strengths include practical examples and thoughtful
+   opinions.  Overall, this submission meets basic requirements but requires
+   corrections for full accuracy.
+
+nice work!
