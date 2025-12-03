@@ -10,6 +10,7 @@ interface Outfit {
   description: string;
   product_count: number;
   created_at: string;
+  preview_images?: string[];
 }
 
 interface Closet {
@@ -30,6 +31,7 @@ export default function ClosetPage() {
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [newOutfit, setNewOutfit] = useState({
     name: '',
     description: ''
@@ -62,6 +64,11 @@ export default function ClosetPage() {
 
   const handleCreateOutfit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!token) {
+      alert('Please log in to create an outfit');
+      return;
+    }
+    
     try {
       const res = await fetch(`http://localhost:3001/api/closets/${closetId}/outfits`, {
         method: 'POST',
@@ -73,12 +80,59 @@ export default function ClosetPage() {
       });
       
       if (res.ok) {
+        const data = await res.json();
+        console.log('Outfit created successfully:', data);
         setShowCreateModal(false);
         setNewOutfit({ name: '', description: '' });
         fetchClosetData();
+      } else {
+        const errorText = await res.text();
+        let error;
+        try {
+          error = JSON.parse(errorText);
+        } catch {
+          error = { error: errorText || `HTTP ${res.status}: ${res.statusText}` };
+        }
+        console.error('Failed to create outfit:', res.status, error);
+        alert(`Failed to create outfit: ${error.error || `HTTP ${res.status}`}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating outfit:', error);
+      alert(`Error creating outfit: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleDeleteCloset = async () => {
+    if (!confirm('Are you sure you want to delete this closet? This will also delete all outfits in this closet. This action cannot be undone.')) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`http://localhost:3001/api/closets/${closetId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (res.ok) {
+        router.push('/profile');
+      } else {
+        const errorText = await res.text();
+        let error;
+        try {
+          error = JSON.parse(errorText);
+        } catch {
+          error = { error: errorText || `HTTP ${res.status}: ${res.statusText}` };
+        }
+        alert(`Failed to delete closet: ${error.error || `HTTP ${res.status}`}`);
+      }
+    } catch (error: any) {
+      console.error('Error deleting closet:', error);
+      alert(`Error deleting closet: ${error.message || 'Unknown error'}`);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -121,18 +175,29 @@ export default function ClosetPage() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
-          <button
-            onClick={() => router.push('/profile')}
-            className="text-blue-600 hover:text-blue-800 mb-2"
-          >
-            ← Back to Profile
-          </button>
-          <h1 className="text-3xl font-bold">{closet.name}</h1>
-          {closet.description && (
-            <p className="text-gray-600 mt-2">{closet.description}</p>
-          )}
-          <div className="mt-2 text-sm text-gray-500">
-            {closet.is_public ? '🌐 Public' : '🔒 Private'}
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <button
+                onClick={() => router.push('/profile')}
+                className="text-blue-600 hover:text-blue-800 mb-2"
+              >
+                ← Back to Profile
+              </button>
+              <h1 className="text-3xl font-bold">{closet.name}</h1>
+              {closet.description && (
+                <p className="text-gray-600 mt-2">{closet.description}</p>
+              )}
+              <div className="mt-2 text-sm text-gray-500">
+                {closet.is_public ? '🌐 Public' : '🔒 Private'}
+              </div>
+            </div>
+            <button
+              onClick={handleDeleteCloset}
+              disabled={deleting}
+              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {deleting ? 'Deleting...' : 'Delete Closet'}
+            </button>
           </div>
         </div>
       </header>
@@ -163,35 +228,83 @@ export default function ClosetPage() {
             {outfits.map((outfit) => (
               <div
                 key={outfit.id}
-                className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow"
+                onClick={() => router.push(`/profile/closets/${closetId}/outfits/${outfit.id}`)}
+                className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
               >
-                <div className="h-48 bg-gradient-to-br from-pink-400 to-orange-500 flex items-center justify-center">
-                  <span className="text-6xl">👔</span>
+                {/* Tall vertical preview - iPhone-like figure layout */}
+                <div className="h-96 bg-gray-50 relative overflow-hidden">
+                  {outfit.preview_images && outfit.preview_images.length > 0 ? (
+                    <div className="h-full flex flex-col gap-1 p-2">
+                      {/* Top section - Accessories/Headwear */}
+                      <div className="h-16 flex gap-1">
+                        {outfit.preview_images.slice(0, 2).map((img: string, idx: number) => (
+                          <img
+                            key={idx}
+                            src={img}
+                            alt={`${outfit.name} preview ${idx + 1}`}
+                            className="w-1/2 h-full object-cover rounded"
+                          />
+                        ))}
+                        {outfit.preview_images.length < 2 && (
+                          <div className="w-1/2 bg-gray-200 rounded"></div>
+                        )}
+                      </div>
+                      {/* Middle section - Top */}
+                      <div className="flex-1 flex gap-1">
+                        {outfit.preview_images.slice(2, 4).map((img: string, idx: number) => (
+                          <img
+                            key={idx + 2}
+                            src={img}
+                            alt={`${outfit.name} preview ${idx + 3}`}
+                            className="w-1/2 h-full object-cover rounded"
+                          />
+                        ))}
+                        {outfit.preview_images.length < 4 && (
+                          <div className="w-1/2 bg-gray-200 rounded"></div>
+                        )}
+                      </div>
+                      {/* Bottom section - Bottoms/Shoes */}
+                      <div className="h-20 flex gap-1">
+                        {outfit.preview_images.length > 4 ? (
+                          outfit.preview_images.slice(4, 6).map((img: string, idx: number) => (
+                            <img
+                              key={idx + 4}
+                              src={img}
+                              alt={`${outfit.name} preview ${idx + 5}`}
+                              className="w-1/2 h-full object-cover rounded"
+                            />
+                          ))
+                        ) : (
+                          <>
+                            {outfit.preview_images.slice(0, 2).map((img: string, idx: number) => (
+                              <img
+                                key={idx}
+                                src={img}
+                                alt={`${outfit.name} preview ${idx + 1}`}
+                                className="w-1/2 h-full object-cover rounded"
+                              />
+                            ))}
+                          </>
+                        )}
+                        {outfit.preview_images.length < 2 && (
+                          <div className="w-1/2 bg-gray-200 rounded"></div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="h-full flex items-center justify-center">
+                      <span className="text-6xl opacity-30">👔</span>
+                    </div>
+                  )}
                 </div>
 
-                <div className="p-4">
-                  <h3 className="text-lg font-semibold mb-2">{outfit.name}</h3>
+                <div className="p-4 border-t">
+                  <h3 className="text-lg font-semibold mb-1">{outfit.name}</h3>
                   {outfit.description && (
-                    <p className="text-gray-600 text-sm mb-3">{outfit.description}</p>
+                    <p className="text-gray-600 text-sm mb-2 line-clamp-2">{outfit.description}</p>
                   )}
-                  
-                  <div className="text-sm text-gray-500 mb-4">
+                  <div className="text-sm text-gray-500">
                     {outfit.product_count} item{outfit.product_count !== 1 ? 's' : ''}
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => router.push(`/profile/closets/${closetId}/outfits/${outfit.id}`)}
-                      className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm"
-                    >
-                      View Outfit
-                    </button>
-                    <button
-                      onClick={() => handleDeleteOutfit(outfit.id)}
-                      className="px-4 py-2 text-red-600 hover:bg-red-50 rounded text-sm"
-                    >
-                      Delete
-                    </button>
                   </div>
                 </div>
               </div>

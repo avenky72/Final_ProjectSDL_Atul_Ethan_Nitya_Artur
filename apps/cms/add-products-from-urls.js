@@ -121,23 +121,17 @@ function extractPrice($, selectors) {
 }
 
 function extractImages($, selectors, baseUrl) {
-  // Priority selectors for main product image (try these first)
-  const prioritySelectors = [
-    'img[class*="featured"]',
-    'img[class*="primary"]',
-    'img[class*="main"]',
-    'img[class*="hero"]',
-    '[class*="product-image"] img:first',
-    '[class*="product-gallery"] img:first',
-    '[class*="product-photo"] img:first',
-    'meta[property="og:image"]'
-  ];
+  const allImages = [];
+  const whiteBgImages = [];
+  const modelImages = [];
   
-  // Try priority selectors first
-  for (const selector of prioritySelectors) {
-    const element = $(selector).first();
-    if (element.length) {
-      let imgUrl = element.attr('src') || element.attr('data-src') || element.attr('content') || element.attr('data-lazy-src') || element.attr('data-original');
+  // Collect all product images
+  for (const selector of selectors) {
+    const images = $(selector);
+    
+    for (let i = 0; i < images.length; i++) {
+      const img = images.eq(i);
+      let imgUrl = img.attr('src') || img.attr('data-src') || img.attr('content') || img.attr('data-lazy-src') || img.attr('data-original');
       
       if (imgUrl) {
         // Convert relative URLs to absolute
@@ -160,43 +154,44 @@ function extractImages($, selectors, baseUrl) {
             !imgUrl.includes('icon') &&
             !imgUrl.includes('avatar') &&
             !imgUrl.match(/\.(svg|ico)$/i)) {
-          return [imgUrl]; // Return first valid image found
+          
+          const imgUrlLower = imgUrl.toLowerCase();
+          const imgAlt = (img.attr('alt') || '').toLowerCase();
+          const imgClass = (img.attr('class') || '').toLowerCase();
+          
+          // Check if it's a white background image
+          if (imgUrlLower.includes('white') || 
+              imgUrlLower.includes('background') || 
+              imgUrlLower.includes('flat') ||
+              imgUrlLower.includes('_15') || // Common pattern for white bg images
+              imgAlt.includes('white') ||
+              imgClass.includes('white')) {
+            whiteBgImages.push(imgUrl);
+          }
+          // Check if it's a model image
+          else if (imgUrlLower.includes('model') || 
+                   imgAlt.includes('model') ||
+                   imgClass.includes('model')) {
+            modelImages.push(imgUrl);
+          }
+          // Regular product image
+          else {
+            allImages.push(imgUrl);
+          }
         }
       }
     }
   }
   
-  // Fallback: try all selectors and return first valid image
-  for (const selector of selectors) {
-    const element = $(selector).first();
-    if (element.length) {
-      let imgUrl = element.attr('src') || element.attr('data-src') || element.attr('content') || element.attr('data-lazy-src') || element.attr('data-original');
-      
-      if (imgUrl) {
-        // Convert relative URLs to absolute
-        if (imgUrl.startsWith('//')) {
-          imgUrl = 'https:' + imgUrl;
-        } else if (imgUrl.startsWith('/')) {
-          try {
-            const urlObj = new URL(baseUrl);
-            imgUrl = urlObj.origin + imgUrl;
-          } catch (e) {
-            continue;
-          }
-        }
-        
-        // Filter out small images, placeholders, logos, icons
-        if (imgUrl && 
-            imgUrl.startsWith('http') && 
-            !imgUrl.includes('placeholder') &&
-            !imgUrl.includes('logo') &&
-            !imgUrl.includes('icon') &&
-            !imgUrl.includes('avatar') &&
-            !imgUrl.match(/\.(svg|ico)$/i)) {
-          return [imgUrl]; // Return first valid image found
-        }
-      }
-    }
+  // Priority: white background > regular images > model images
+  if (whiteBgImages.length > 0) {
+    return [whiteBgImages[0]]; // Return first white background image
+  }
+  if (allImages.length > 0) {
+    return [allImages[0]]; // Return first regular image
+  }
+  if (modelImages.length > 0) {
+    return [modelImages[0]]; // Fallback to model image if nothing else
   }
   
   return null; // No valid image found

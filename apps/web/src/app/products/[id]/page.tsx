@@ -22,10 +22,6 @@ interface Product {
   category_name?: string;
 }
 
-interface Closet {
-  id: number;
-  name: string;
-}
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -36,15 +32,12 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState(false);
-  const [closets, setClosets] = useState<Closet[]>([]);
-  const [showClosetDropdown, setShowClosetDropdown] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   useEffect(() => {
     if (productId) {
       fetchProduct();
       if (user && token) {
-        fetchClosets();
         checkLikedStatus();
       }
     }
@@ -58,18 +51,6 @@ export default function ProductDetailPage() {
       console.error('Error fetching product:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchClosets = async () => {
-    try {
-      const res = await fetch('http://localhost:3001/api/closets', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      setClosets(data.closets || []);
-    } catch (error) {
-      console.error('Error fetching closets:', error);
     }
   };
 
@@ -108,36 +89,6 @@ export default function ProductDetailPage() {
     }
   };
 
-  const addToCloset = async (closetId: number) => {
-    if (!user || !token) {
-      router.push('/auth');
-      return;
-    }
-
-    try {
-      // First, we need to create an outfit or add directly to closet
-      // For now, let's add to a default "Favorites" outfit or create one
-      const res = await fetch(`http://localhost:3001/api/closets/${closetId}/add-product`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ product_id: productId })
-      });
-
-      if (res.ok) {
-        setShowClosetDropdown(false);
-        alert('Product added to closet!');
-      } else {
-        const error = await res.json();
-        alert(error.error || 'Failed to add product to closet');
-      }
-    } catch (error) {
-      console.error('Error adding to closet:', error);
-      alert('Failed to add product to closet');
-    }
-  };
 
   if (loading) {
     return (
@@ -276,10 +227,10 @@ export default function ProductDetailPage() {
             )}
 
             {/* Action Buttons */}
-            <div className="flex gap-4 mb-6">
+            <div className="mb-6">
               <button
                 onClick={toggleLike}
-                className={`flex-1 px-6 py-3 rounded-lg font-medium transition ${
+                className={`w-full px-6 py-3 rounded-lg font-medium transition ${
                   liked
                     ? 'bg-red-500 text-white hover:bg-red-600'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -287,35 +238,6 @@ export default function ProductDetailPage() {
               >
                 {liked ? '❤️ Liked' : '🤍 Like'}
               </button>
-
-              <div className="relative flex-1">
-                <button
-                  onClick={() => {
-                    if (!user) {
-                      router.push('/auth');
-                      return;
-                    }
-                    setShowClosetDropdown(!showClosetDropdown);
-                  }}
-                  className="w-full px-6 py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800"
-                >
-                  ➕ Add to Closet
-                </button>
-
-                {showClosetDropdown && closets.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-white border rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto">
-                    {closets.map(closet => (
-                      <button
-                        key={closet.id}
-                        onClick={() => addToCloset(closet.id)}
-                        className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b last:border-b-0"
-                      >
-                        {closet.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
 
             {/* View Original */}

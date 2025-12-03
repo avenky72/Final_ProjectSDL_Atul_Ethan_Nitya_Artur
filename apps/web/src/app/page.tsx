@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import Logo from '@/components/Logo';
 
 interface Product { 
   id: number; 
@@ -62,6 +63,10 @@ export default function HomePage() {
   const [outfitCreation, setOutfitCreation] = useState<OutfitCreation | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
   const [outfitName, setOutfitName] = useState('');
+  const [showLikedProducts, setShowLikedProducts] = useState(false);
+  const [likedProducts, setLikedProducts] = useState<Product[]>([]);
+  const [loadingLiked, setLoadingLiked] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     const fetchFilterOptions = async () => {
@@ -96,6 +101,10 @@ export default function HomePage() {
         setOutfitCreation(parsed);
         setSelectedProducts(parsed.selectedProducts || []);
       }
+      // Fetch liked products when entering outfit mode
+      if (token) {
+        fetchLikedProducts();
+      }
     }
     
     // Check if viewing an outfit
@@ -128,6 +137,37 @@ export default function HomePage() {
       console.error('Error fetching products:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchLikedProducts = async () => {
+    if (!token) return;
+    
+    setLoadingLiked(true);
+    try {
+      const res = await fetch('http://localhost:3001/api/products/liked', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setLikedProducts(data.products || []);
+      } else {
+        const errorText = await res.text();
+        let error;
+        try {
+          error = JSON.parse(errorText);
+        } catch {
+          error = { error: errorText || `HTTP ${res.status}` };
+        }
+        console.error('Failed to fetch liked products:', res.status, error);
+        setLikedProducts([]); // Set empty array on error
+      }
+    } catch (error) {
+      console.error('Error fetching liked products:', error);
+      setLikedProducts([]);
+    } finally {
+      setLoadingLiked(false);
     }
   };
 
@@ -231,32 +271,53 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen relative" style={{ zIndex: 1 }}>
       {/* Header */}
-      <header className="border-b px-4 py-4">
+      <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-4 py-3 shadow-sm">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Couture Closet</h1>
-          <div className="flex gap-4 items-center">
-            {user && <span className="text-sm text-gray-600">{user.email}</span>}
+          <div 
+            className="flex items-center cursor-pointer hover:opacity-80 transition"
+            onClick={() => router.push('/')}
+          >
+            <Logo className="w-10 h-10 text-black" />
+          </div>
+          <div className="flex gap-3 items-center">
+            {!isOutfitMode && (
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="p-2 rounded-full border border-gray-300 hover:bg-gray-50 transition"
+                aria-label="Toggle filters"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+              </button>
+            )}
             {user ? (
               <div className="flex gap-2">
                 <button
                   onClick={() => router.push('/profile')}
-                  className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
+                  className="p-2 rounded-full hover:bg-gray-100 transition"
+                  aria-label="Profile"
                 >
-                  My Profile
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
                 </button>
                 <button
                   onClick={handleLogout}
-                  className="border px-4 py-2 rounded hover:bg-gray-100"
+                  className="p-2 rounded-full hover:bg-gray-100 transition"
+                  aria-label="Sign out"
                 >
-                  Sign Out
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
                 </button>
               </div>
             ) : (
               <button
                 onClick={() => router.push('/auth')}
-                className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
+                className="px-4 py-2 rounded-full bg-black text-white hover:bg-gray-800 text-sm font-medium transition"
               >
                 Sign In
               </button>
@@ -308,138 +369,189 @@ export default function HomePage() {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex gap-6">
-          {/* Filters Sidebar */}
-          <aside className="w-64 flex-shrink-0">
-            <h3 className="font-semibold mb-4">Filters</h3>
-            
-            {/* Category Filter */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium mb-2">Category</label>
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full p-2 border rounded"
-              >
-                <option value="">All Categories</option>
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.slug}>{cat.name}</option>
-                ))}
-              </select>
-            </div>
+      {/* Filters Panel */}
+      {showFilters && (
+        <div className="sticky top-[57px] z-40 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 py-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Category Filter */}
+              <div>
+                <label className="block text-xs font-medium mb-2 text-gray-700">Category</label>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                >
+                  <option value="">All Categories</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.slug}>{cat.name}</option>
+                  ))}
+                </select>
+              </div>
 
-            {/* Brand Filter */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium mb-2">Brand</label>
-              <select
-                value={selectedBrand}
-                onChange={(e) => setSelectedBrand(e.target.value)}
-                className="w-full p-2 border rounded"
-              >
-                <option value="">All Brands</option>
-                {brands.map(brand => (
-                  <option key={brand.id} value={brand.id}>{brand.name}</option>
-                ))}
-              </select>
-            </div>
+              {/* Brand Filter */}
+              <div>
+                <label className="block text-xs font-medium mb-2 text-gray-700">Brand</label>
+                <select
+                  value={selectedBrand}
+                  onChange={(e) => setSelectedBrand(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                >
+                  <option value="">All Brands</option>
+                  {brands.map(brand => (
+                    <option key={brand.id} value={brand.id}>{brand.name}</option>
+                  ))}
+                </select>
+              </div>
 
-            {/* Price Range */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium mb-2">Price Range</label>
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  placeholder="Min"
-                  value={priceRange.min}
-                  onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
-                  className="w-1/2 p-2 border rounded"
-                />
-                <input
-                  type="number"
-                  placeholder="Max"
-                  value={priceRange.max}
-                  onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
-                  className="w-1/2 p-2 border rounded"
-                />
+              {/* Price Range */}
+              <div>
+                <label className="block text-xs font-medium mb-2 text-gray-700">Price Range</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    placeholder="Min"
+                    value={priceRange.min}
+                    onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
+                    className="w-1/2 p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Max"
+                    value={priceRange.max}
+                    onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
+                    className="w-1/2 p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  onClick={() => {
+                    setSelectedCategory('');
+                    setSelectedBrand('');
+                    setPriceRange({ min: '', max: '' });
+                  }}
+                  className="w-full px-4 py-2 text-sm text-gray-600 hover:text-black border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                >
+                  Clear Filters
+                </button>
               </div>
             </div>
-
-            <button
-              onClick={() => {
-                setSelectedCategory('');
-                setSelectedBrand('');
-                setPriceRange({ min: '', max: '' });
-              }}
-              className="text-sm text-gray-600 hover:text-black underline"
-            >
-              Clear all filters
-            </button>
-          </aside>
-
-          {/* Products Grid */}
-          <main className="flex-1">
-            {loading && products.length === 0 ? (
-              <div className="text-center py-12">Loading products...</div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {products.map(product => {
-                    const isSelected = selectedProducts.some(p => p.id === product.id);
-                    return (
-                      <div
-                        key={product.id}
-                        onClick={(e) => {
-                          if (isOutfitMode && !viewOutfitId) {
-                            toggleProductSelection(product);
-                          } else {
-                            router.push(`/products/${product.id}`);
-                          }
-                        }}
-                        className={`
-                          border rounded-lg p-3 transition cursor-pointer
-                          ${isSelected ? 'border-blue-500 bg-blue-50 shadow-lg' : 'hover:shadow-md'}
-                        `}
-                      >
-                        <div className="aspect-square bg-gray-200 rounded mb-2 relative overflow-hidden">
-                          {product.images?.[0] && (
-                            <img 
-                              src={product.images[0]} 
-                              alt={product.title}
-                              className="w-full h-full object-cover"
-                            />
-                          )}
-                          {isSelected && (
-                            <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center">
-                              ✓
-                            </div>
-                          )}
-                        </div>
-                        <h3 className="font-medium text-sm truncate">{product.title}</h3>
-                        <p className="text-gray-900 font-semibold">${product.price}</p>
-                        {product.brand_name && (
-                          <p className="text-xs text-gray-500">{product.brand_name}</p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                
-                {hasMore && !loading && (
-                  <div className="text-center mt-8">
-                    <button
-                      onClick={handleLoadMore}
-                      className="bg-gray-100 px-6 py-2 rounded hover:bg-gray-200"
-                    >
-                      Load More
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </main>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Products Masonry */}
+      <main className="relative" style={{ zIndex: 1 }}>
+        {showLikedProducts && isOutfitMode ? (
+          // Show liked products
+          loadingLiked ? (
+            <div className="text-center py-12 text-gray-600">Loading liked products...</div>
+          ) : likedProducts.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500 mb-4">No liked products yet.</p>
+              <p className="text-sm text-gray-400">Like products to save them here for outfit creation.</p>
+            </div>
+          ) : (
+            <div className="masonry-container">
+              {likedProducts.map(product => {
+                const isSelected = selectedProducts.some(p => p.id === product.id);
+                const imageUrl = product.images?.[0];
+                if (!imageUrl) return null;
+                
+                return (
+                  <div
+                    key={product.id}
+                    className={`masonry-item ${isSelected ? 'product-card selected' : 'product-card'}`}
+                    onClick={(e) => {
+                      if (isOutfitMode && !viewOutfitId) {
+                        toggleProductSelection(product);
+                      } else {
+                        router.push(`/products/${product.id}`);
+                      }
+                    }}
+                  >
+                    <img 
+                      src={imageUrl} 
+                      alt={product.title}
+                      className="product-image"
+                      style={{ width: '100%', height: 'auto', display: 'block' }}
+                    />
+                    {isSelected && (
+                      <div className="absolute top-3 right-3 bg-blue-600 text-white rounded-full w-10 h-10 flex items-center justify-center shadow-lg z-10">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="product-overlay">
+                      <div className="product-overlay-text">{product.title}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        ) : (
+          // Show all products
+          loading && products.length === 0 ? (
+            <div className="text-center py-12 text-gray-600">Loading products...</div>
+          ) : (
+            <>
+              <div className="masonry-container">
+                {products.map(product => {
+                  const isSelected = selectedProducts.some(p => p.id === product.id);
+                  const imageUrl = product.images?.[0];
+                  if (!imageUrl) return null;
+                  
+                  return (
+                    <div
+                      key={product.id}
+                      className={`masonry-item ${isSelected ? 'product-card selected' : 'product-card'}`}
+                      onClick={(e) => {
+                        if (isOutfitMode && !viewOutfitId) {
+                          toggleProductSelection(product);
+                        } else {
+                          router.push(`/products/${product.id}`);
+                        }
+                      }}
+                    >
+                      <img 
+                        src={imageUrl} 
+                        alt={product.title}
+                        className="product-image"
+                        style={{ width: '100%', height: 'auto', display: 'block' }}
+                      />
+                      {isSelected && (
+                        <div className="absolute top-3 right-3 bg-blue-600 text-white rounded-full w-10 h-10 flex items-center justify-center shadow-lg z-10">
+                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      )}
+                      <div className="product-overlay">
+                        <div className="product-overlay-text">{product.title}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              {hasMore && !loading && (
+                <div className="text-center py-8">
+                  <button
+                    onClick={handleLoadMore}
+                    className="bg-white px-8 py-3 rounded-full border border-gray-300 hover:bg-gray-50 font-medium text-sm shadow-sm transition"
+                  >
+                    Load More
+                  </button>
+                </div>
+              )}
+            </>
+          )
+        )}
+      </main>
     </div>
   );
 }
