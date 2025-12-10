@@ -19,6 +19,7 @@ interface Closet {
   is_public: boolean;
   cover_image: string | null;
   outfit_count: number;
+  preview_images?: string[];
   created_at: string;
 }
 
@@ -43,16 +44,24 @@ interface Product {
   category_id?: number;
 }
 
+interface UserProfile {
+  id: number;
+  email: string;
+  full_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { user, token, logout } = useAuth();
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [closets, setClosets] = useState<Closet[]>([]);
-  const [selectedCloset, setSelectedCloset] = useState<Closet | null>(null);
-  const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [likedProducts, setLikedProducts] = useState<Product[]>([]);
   const [showCreateCloset, setShowCreateCloset] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [showLikedProducts, setShowLikedProducts] = useState(false);
+  const [activeTab, setActiveTab] = useState<'closets' | 'liked'>('closets');
+  const [showEditProfile, setShowEditProfile] = useState(false);
   const [deletingCloset, setDeletingCloset] = useState(false);
 
   useEffect(() => {
@@ -60,163 +69,97 @@ export default function ProfilePage() {
       router.push('/auth');
       return;
     }
+    fetchProfile();
     fetchClosets();
     fetchLikedProducts();
   }, [token, router]);
 
-  // Fetch user's closets
-  const fetchClosets = async () => {
-    if (!token) {
-      console.error('No token available');
-      setLoading(false);
-      return;
-    }
-    
+  // Fetch user profile
+  const fetchProfile = async () => {
+    if (!token) return;
     try {
-      const res = await fetch('http://localhost:3001/api/closets', {
-        headers: { 'Authorization': `Bearer ${token}` }
+      // Add cache-busting timestamp to ensure fresh data
+      const res = await fetch(`http://localhost:3001/api/profile?t=${Date.now()}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+        cache: 'no-store'
       });
-      
-      if (!res.ok) {
+      if (res.ok) {
+        const data = await res.json();
+        const profileData = data.profile || { id: user?.id, email: user?.email, full_name: user?.full_name, username: null, avatar_url: null };
+        setProfile(profileData);
+        console.log('Profile fetched:', profileData);
+      } else {
         const errorText = await res.text();
-        let error;
-        try {
-          error = JSON.parse(errorText);
-        } catch {
-          error = { error: errorText || `HTTP ${res.status}: ${res.statusText}` };
-        }
-        console.error('Failed to fetch closets:', res.status, error);
-        return;
+        console.error('Failed to fetch profile:', res.status, errorText);
+        // Fallback to user data from auth
+        setProfile({ id: user?.id, email: user?.email, full_name: user?.full_name, username: null, avatar_url: null });
       }
-      
-      const data = await res.json();
-      setClosets(data.closets || []);
     } catch (error) {
-      console.error('Error fetching closets:', error);
+      console.error('Error fetching profile:', error);
+      // Fallback to user data from auth
+      setProfile({ id: user?.id, email: user?.email, full_name: user?.full_name, username: null, avatar_url: null });
     } finally {
       setLoading(false);
     }
   };
 
-  // Fetch outfits for a closet
-  const fetchOutfits = async (closetId: number) => {
+  // Fetch user's closets
+  const fetchClosets = async () => {
+    if (!token) return;
     try {
-      const res = await fetch(`http://localhost:3001/api/closets/${closetId}`, {
+      const res = await fetch('http://localhost:3001/api/closets', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      
       if (res.ok) {
         const data = await res.json();
-        setOutfits(data.outfits || []);
-      } else {
-        console.error('Failed to fetch outfits:', res.status);
-        setOutfits([]);
+        setClosets(data.closets || []);
       }
     } catch (error) {
-      console.error('Error fetching outfits:', error);
-      setOutfits([]);
+      console.error('Error fetching closets:', error);
     }
   };
 
   // Fetch liked products
   const fetchLikedProducts = async () => {
     if (!token) return;
-    
     try {
       const res = await fetch('http://localhost:3001/api/products/liked', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      
       if (res.ok) {
         const data = await res.json();
         setLikedProducts(data.products || []);
-      } else {
-        const errorText = await res.text();
-        let error;
-        try {
-          error = JSON.parse(errorText);
-        } catch {
-          error = { error: errorText || `HTTP ${res.status}` };
-        }
-        console.error('Failed to fetch liked products:', res.status, error);
-        setLikedProducts([]); // Set empty array on error
       }
     } catch (error) {
       console.error('Error fetching liked products:', error);
-      setLikedProducts([]); // Set empty array on error
+      setLikedProducts([]);
     }
   };
 
   // Delete closet
   const handleDeleteCloset = async (closetId: number) => {
-    if (!confirm('Are you sure you want to delete this closet? This will also delete all outfits in this closet. This action cannot be undone.')) {
+    if (!confirm('Are you sure you want to delete this closet? This will also delete all outfits in this closet.')) {
       return;
     }
-
     setDeletingCloset(true);
     try {
       const res = await fetch(`http://localhost:3001/api/closets/${closetId}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
-
       if (res.ok) {
-        // Refresh closets list
         await fetchClosets();
-        // Clear selected closet if it was the deleted one
-        if (selectedCloset && selectedCloset.id === closetId) {
-          setSelectedCloset(null);
-          setOutfits([]);
-        }
-      } else {
-        const errorText = await res.text();
-        let error;
-        try {
-          error = JSON.parse(errorText);
-        } catch {
-          error = { error: errorText || `HTTP ${res.status}: ${res.statusText}` };
-        }
-        alert(`Failed to delete closet: ${error.error || `HTTP ${res.status}`}`);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error deleting closet:', error);
-      alert(`Error deleting closet: ${error.message || 'Unknown error'}`);
     } finally {
       setDeletingCloset(false);
     }
   };
 
-  // Handle closet selection
-  const handleClosetClick = async (closet: Closet) => {
-    setSelectedCloset(closet);
-    await fetchOutfits(closet.id);
-  };
-
-  // Start outfit creation - navigate to home with context
-  const startOutfitCreation = () => {
-    if (!selectedCloset) return;
-    
-    // Store outfit creation context in sessionStorage
-    sessionStorage.setItem('outfitCreation', JSON.stringify({
-      closetId: selectedCloset.id,
-      closetName: selectedCloset.name,
-      mode: 'creating',
-      selectedProducts: []
-    }));
-    
-    // Navigate to home page in outfit creation mode
-    router.push('/?outfit-mode=true');
-  };
-
   // Create a new closet
   const createCloset = async (name: string, tag: string) => {
-    if (!token) {
-      alert('Please log in to create a closet');
-      return;
-    }
-    
+    if (!token) return;
     try {
       const res = await fetch('http://localhost:3001/api/closets', {
         method: 'POST',
@@ -225,55 +168,18 @@ export default function ProfilePage() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          name: name, // Just use the name, tag is only for organization/filtering
+          name: name,
           description: `My ${tag.toLowerCase()} collection`,
           is_public: false
         })
       });
-      
       if (res.ok) {
-        const data = await res.json();
-        console.log('Closet created successfully:', data);
         await fetchClosets();
         setShowCreateCloset(false);
-      } else {
-        const errorText = await res.text();
-        let error;
-        try {
-          error = JSON.parse(errorText);
-        } catch {
-          error = { error: errorText || `HTTP ${res.status}: ${res.statusText}` };
-        }
-        console.error('Failed to create closet:', res.status, error);
-        alert(`Failed to create closet: ${error.error || `HTTP ${res.status}`}`);
       }
     } catch (error) {
       console.error('Error creating closet:', error);
-      alert(`Error creating closet: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  };
-
-  // Delete outfit
-  const deleteOutfit = async (outfitId: number) => {
-    if (!confirm('Delete this outfit?') || !selectedCloset) return;
-    
-    try {
-      const res = await fetch(`http://localhost:3001/api/closets/${selectedCloset.id}/outfits/${outfitId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        fetchOutfits(selectedCloset.id);
-      }
-    } catch (error) {
-      console.error('Error deleting outfit:', error);
-    }
-  };
-
-  // View outfit details
-  const viewOutfit = (outfitId: number) => {
-    if (!selectedCloset) return;
-    router.push(`/profile/closets/${selectedCloset.id}/outfits/${outfitId}`);
   };
 
   if (loading) {
@@ -285,9 +191,9 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen relative" style={{ zIndex: 1 }}>
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-4 py-3 shadow-sm">
+    <div className="min-h-screen bg-white relative" style={{ zIndex: 1 }}>
+      {/* Header - Pinterest style */}
+      <header className="sticky top-0 z-50 bg-white px-4 py-2">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-4">
             <div 
@@ -295,10 +201,6 @@ export default function ProfilePage() {
               onClick={() => router.push('/')}
             >
               <Logo className="w-10 h-10 text-black" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold">My Profile</h1>
-              <p className="text-sm text-gray-600 hidden sm:inline">Welcome back, {user?.email}</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -327,37 +229,145 @@ export default function ProfilePage() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto p-6">
-        {/* Tabs for Closets and Liked Products */}
-        {!selectedCloset && (
-          <div className="mb-6 border-b">
-            <div className="flex gap-4">
-              <button
-                onClick={() => setShowLikedProducts(false)}
-                className={`pb-3 px-2 font-medium ${
-                  !showLikedProducts
-                    ? 'border-b-2 border-black text-black'
-                    : 'text-gray-500 hover:text-black'
-                }`}
-              >
-                My Closets
-              </button>
-              <button
-                onClick={() => setShowLikedProducts(true)}
-                className={`pb-3 px-2 font-medium ${
-                  showLikedProducts
-                    ? 'border-b-2 border-black text-black'
-                    : 'text-gray-500 hover:text-black'
-                }`}
-              >
-                Liked Products ({likedProducts.length})
-              </button>
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Profile Header Section - Pinterest Style - Left Aligned */}
+        <div className="mb-6">
+          <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center">
+            {/* Profile Picture */}
+            <div className="flex-shrink-0">
+              <div className="w-24 h-24 rounded-full bg-gray-200 overflow-hidden border-2 border-gray-300">
+                {profile?.avatar_url ? (
+                  <img src={profile.avatar_url} alt={profile.full_name || 'Profile'} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                    <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                )}
+              </div>
             </div>
+
+            {/* Profile Info */}
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-2">
+                <h1 className="text-3xl font-bold text-gray-900">
+                  {profile?.full_name || 'User'}
+                </h1>
+                <button
+                  onClick={() => setShowEditProfile(true)}
+                  className="px-4 py-2 border border-gray-300 rounded-full text-sm font-medium hover:bg-gray-50 transition whitespace-nowrap"
+                >
+                  Edit profile
+                </button>
+              </div>
+              {profile?.username && (
+                <p className="text-gray-600 mb-2">@{profile.username}</p>
+              )}
+              <div className="flex gap-6 text-sm text-gray-600">
+                <span><strong className="text-black">{closets.length}</strong> Closets</span>
+                <span><strong className="text-black">{likedProducts.length}</strong> Liked</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Tab Buttons - Pinterest Style - Centered with spacing */}
+        <div className="border-b border-gray-200 mb-6 mt-12">
+          <div className="flex gap-8 justify-center">
+            <button
+              onClick={() => setActiveTab('closets')}
+              className={`pb-3 px-1 font-semibold text-sm transition ${
+                activeTab === 'closets'
+                  ? 'border-b-2 border-black text-black'
+                  : 'text-gray-500 hover:text-black'
+              }`}
+            >
+              Closets
+            </button>
+            <button
+              onClick={() => setActiveTab('liked')}
+              className={`pb-3 px-1 font-semibold text-sm transition ${
+                activeTab === 'liked'
+                  ? 'border-b-2 border-black text-black'
+                  : 'text-gray-500 hover:text-black'
+              }`}
+            >
+              Liked Products
+            </button>
+          </div>
+        </div>
+
+        {/* Content Area */}
+        {activeTab === 'closets' && (
+          <div>
+            {closets.length === 0 ? (
+              <div className="bg-white rounded-lg p-12 text-center">
+                <div className="text-gray-400 mb-4">
+                  <svg className="w-24 h-24 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium mb-2">No closets yet</h3>
+                <p className="text-gray-500 mb-4">Create your first closet to start organizing outfits</p>
+                <button
+                  onClick={() => setShowCreateCloset(true)}
+                  className="bg-black text-white px-6 py-2 rounded-full hover:bg-gray-800 transition"
+                >
+                  Create Your First Closet
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {closets.map(closet => (
+                  <div
+                    key={closet.id}
+                    onClick={() => router.push(`/profile/closets/${closet.id}`)}
+                    className="bg-white rounded-lg border hover:shadow-lg transition cursor-pointer overflow-hidden"
+                  >
+                    {/* Closet Preview - Show outfit previews if available */}
+                    {closet.preview_images && closet.preview_images.length > 0 ? (
+                      <div className="h-64 bg-gray-50 relative overflow-hidden">
+                        <div className="h-full grid grid-cols-2 gap-1 p-1">
+                          {closet.preview_images.slice(0, 4).map((img, idx) => (
+                            <div key={idx} className="bg-white rounded overflow-hidden">
+                              <img
+                                src={img}
+                                alt={`${closet.name} preview ${idx + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : closet.outfit_count > 0 ? (
+                      // If closet has outfits but no preview images yet, show placeholder
+                      <div className="h-64 bg-gray-50 relative overflow-hidden">
+                        <div className="h-full flex items-center justify-center">
+                          <span className="text-5xl opacity-30">👗</span>
+                        </div>
+                      </div>
+                    ) : (
+                      // Empty closet - show nothing (or minimal placeholder)
+                      <div className="h-64 bg-gray-50 relative overflow-hidden"></div>
+                    )}
+                    <div className="p-4">
+                      <h3 className="font-medium text-lg">{closet.name}</h3>
+                      {closet.description && (
+                        <p className="text-sm text-gray-500 mt-1">{closet.description}</p>
+                      )}
+                      <div className="flex justify-between items-center mt-3">
+                        <span className="text-sm text-gray-600">{closet.outfit_count || 0} outfits</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Liked Products View */}
-        {!selectedCloset && showLikedProducts && (
+        {activeTab === 'liked' && (
           <div>
             {likedProducts.length === 0 ? (
               <div className="bg-white rounded-lg p-12 text-center">
@@ -370,246 +380,35 @@ export default function ProfilePage() {
                 <p className="text-gray-500 mb-4">Start liking products to save them here</p>
                 <button
                   onClick={() => router.push('/')}
-                  className="bg-black text-white px-6 py-2 rounded hover:bg-gray-800"
+                  className="bg-black text-white px-6 py-2 rounded-full hover:bg-gray-800 transition"
                 >
                   Browse Products
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {likedProducts.map(product => (
-                  <div
-                    key={product.id}
-                    onClick={() => router.push(`/products/${product.id}`)}
-                    className="bg-white rounded-lg border hover:shadow-lg transition cursor-pointer overflow-hidden"
-                  >
-                    <div className="h-48 bg-gray-100 flex items-center justify-center overflow-hidden">
-                      {product.images && product.images.length > 0 ? (
-                        <img
-                          src={product.images[0]}
-                          alt={product.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-4xl opacity-30">👕</span>
-                      )}
-                    </div>
-                    <div className="p-4">
-                      <h3 className="font-medium text-sm line-clamp-2 mb-1">{product.title}</h3>
-                      <p className="text-sm font-semibold text-black">
-                        {product.currency || 'USD'} ${product.price?.toFixed(2) || '0.00'}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Closets Grid View */}
-        {!selectedCloset && !showLikedProducts && (
-          <div>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold">My Closets</h2>
-              <button
-                onClick={() => setShowCreateCloset(true)}
-                className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
-              >
-                + New Closet
-              </button>
-            </div>
-
-            {closets.length === 0 ? (
-              <div className="bg-white rounded-lg p-12 text-center">
-                <div className="text-gray-400 mb-4">
-                  <svg className="w-24 h-24 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-medium mb-2">No closets yet</h3>
-                <p className="text-gray-500 mb-4">Create your first closet to start organizing outfits</p>
-                <button
-                  onClick={() => setShowCreateCloset(true)}
-                  className="bg-black text-white px-6 py-2 rounded hover:bg-gray-800"
-                >
-                  Create Your First Closet
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {closets.map(closet => (
-                  <div
-                    key={closet.id}
-                    onClick={() => handleClosetClick(closet)}
-                    className="bg-white rounded-lg border hover:shadow-lg transition cursor-pointer overflow-hidden"
-                  >
-                    <div className="h-32 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                      <span className="text-5xl opacity-50">👗</span>
-                    </div>
-                    <div className="p-4">
-                      <h3 className="font-medium text-lg">{closet.name}</h3>
-                      {closet.description && (
-                        <p className="text-sm text-gray-500 mt-1">{closet.description}</p>
-                      )}
-                      <div className="flex justify-between items-center mt-3">
-                        <span className="text-sm text-gray-600">{closet.outfit_count || 0} outfits</span>
-                        <span className="text-xs text-gray-400">
-                          {closet.is_public ? '🌐 Public' : '🔒 Private'}
-                        </span>
+              <div className="masonry-container">
+                {likedProducts.map(product => {
+                  const imageUrl = product.images?.[0];
+                  if (!imageUrl) return null;
+                  
+                  return (
+                    <div
+                      key={product.id}
+                      className="masonry-item product-card"
+                      onClick={() => router.push(`/products/${product.id}`)}
+                    >
+                      <img 
+                        src={imageUrl} 
+                        alt={product.title}
+                        className="product-image"
+                        style={{ width: '100%', height: 'auto', display: 'block' }}
+                      />
+                      <div className="product-overlay">
+                        <div className="product-overlay-text">{product.title}</div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Selected Closet View */}
-        {selectedCloset && (
-          <div>
-            <div className="flex items-center gap-4 mb-6">
-              <button 
-                onClick={() => {
-                  setSelectedCloset(null);
-                  setOutfits([]);
-                }}
-                className="text-gray-600 hover:text-black"
-              >
-                ← Back to Closets
-              </button>
-            </div>
-
-            <div className="bg-white rounded-lg p-6 mb-6">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <h2 className="text-2xl font-bold">{selectedCloset.name}</h2>
-                  {selectedCloset.description && (
-                    <p className="text-gray-600 mt-2">{selectedCloset.description}</p>
-                  )}
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => router.push(`/profile/closets/${selectedCloset.id}`)}
-                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                  >
-                    View Full Closet
-                  </button>
-                  <button
-                    onClick={startOutfitCreation}
-                    className="bg-black text-white px-6 py-2 rounded hover:bg-gray-800"
-                  >
-                    + Create New Outfit
-                  </button>
-                  <button
-                    onClick={() => handleDeleteCloset(selectedCloset.id)}
-                    disabled={deletingCloset}
-                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {deletingCloset ? 'Deleting...' : 'Delete'}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Outfits Grid */}
-            {outfits.length === 0 ? (
-              <div className="bg-white rounded-lg p-12 text-center">
-                <div className="text-gray-400 mb-4">
-                  <svg className="w-20 h-20 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-medium mb-2">No outfits yet</h3>
-                <p className="text-gray-500 mb-4">Start creating outfits from your favorite products</p>
-                <button
-                  onClick={startOutfitCreation}
-                  className="bg-black text-white px-6 py-2 rounded hover:bg-gray-800"
-                >
-                  Create Your First Outfit
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {outfits.map(outfit => (
-                  <div
-                    key={outfit.id}
-                    className="bg-white border rounded-lg overflow-hidden hover:shadow-lg transition cursor-pointer"
-                    onClick={() => viewOutfit(outfit.id)}
-                  >
-                    {/* Tall vertical preview - iPhone-like figure layout */}
-                    <div className="h-80 bg-gray-50 relative overflow-hidden">
-                      {outfit.preview_images && outfit.preview_images.length > 0 ? (
-                        <div className="h-full flex flex-col gap-1 p-2">
-                          {/* Top section - Accessories/Headwear */}
-                          <div className="h-12 flex gap-1">
-                            {outfit.preview_images.slice(0, 2).map((img: string, idx: number) => (
-                              <img
-                                key={idx}
-                                src={img}
-                                alt={`${outfit.name} preview ${idx + 1}`}
-                                className="w-1/2 h-full object-cover rounded"
-                              />
-                            ))}
-                            {outfit.preview_images.length < 2 && (
-                              <div className="w-1/2 bg-gray-200 rounded"></div>
-                            )}
-                          </div>
-                          {/* Middle section - Top */}
-                          <div className="flex-1 flex gap-1">
-                            {outfit.preview_images.slice(2, 4).map((img: string, idx: number) => (
-                              <img
-                                key={idx + 2}
-                                src={img}
-                                alt={`${outfit.name} preview ${idx + 3}`}
-                                className="w-1/2 h-full object-cover rounded"
-                              />
-                            ))}
-                            {outfit.preview_images.length < 4 && (
-                              <div className="w-1/2 bg-gray-200 rounded"></div>
-                            )}
-                          </div>
-                          {/* Bottom section - Bottoms/Shoes */}
-                          <div className="h-16 flex gap-1">
-                            {outfit.preview_images.length > 4 ? (
-                              outfit.preview_images.slice(4, 6).map((img: string, idx: number) => (
-                                <img
-                                  key={idx + 4}
-                                  src={img}
-                                  alt={`${outfit.name} preview ${idx + 5}`}
-                                  className="w-1/2 h-full object-cover rounded"
-                                />
-                              ))
-                            ) : (
-                              <>
-                                {outfit.preview_images.slice(0, 2).map((img: string, idx: number) => (
-                                  <img
-                                    key={idx}
-                                    src={img}
-                                    alt={`${outfit.name} preview ${idx + 1}`}
-                                    className="w-1/2 h-full object-cover rounded"
-                                  />
-                                ))}
-                              </>
-                            )}
-                            {outfit.preview_images.length < 2 && (
-                              <div className="w-1/2 bg-gray-200 rounded"></div>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="h-full flex items-center justify-center">
-                          <span className="text-4xl opacity-30">👔</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-3 border-t">
-                      <h3 className="font-medium text-sm mb-1">{outfit.name}</h3>
-                      <p className="text-xs text-gray-500">{outfit.product_count || 0} items</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -622,6 +421,57 @@ export default function ProfilePage() {
           tags={CLOSET_TAGS}
           onClose={() => setShowCreateCloset(false)}
           onCreate={createCloset}
+        />
+      )}
+
+      {/* Edit Profile Modal */}
+      {showEditProfile && (
+        <EditProfileModal
+          profile={profile || { id: user?.id || 0, email: user?.email || '', full_name: user?.full_name || null, username: null, avatar_url: null }}
+          onClose={() => setShowEditProfile(false)}
+          onSave={async (updates) => {
+            // Update profile
+            if (token) {
+              try {
+                console.log('Updating profile with:', updates);
+                const res = await fetch('http://localhost:3001/api/profile', {
+                  method: 'PATCH',
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify(updates)
+                });
+                
+                if (res.ok) {
+                  const data = await res.json();
+                  console.log('Profile updated successfully:', data);
+                  // Update local state immediately
+                  if (data.profile) {
+                    setProfile(data.profile);
+                  }
+                  await fetchProfile();
+                  setShowEditProfile(false);
+                } else {
+                  const errorText = await res.text();
+                  console.error('Error updating profile:', res.status, errorText);
+                  let errorMessage = 'Failed to update profile.';
+                  try {
+                    const errorJson = JSON.parse(errorText);
+                    errorMessage = errorJson.error || errorMessage;
+                  } catch {
+                    errorMessage = errorText || errorMessage;
+                  }
+                  alert(errorMessage);
+                }
+              } catch (error) {
+                console.error('Error updating profile:', error);
+                alert(`Failed to update profile: ${error instanceof Error ? error.message : 'Unknown error'}`);
+              }
+            } else {
+              alert('Please log in to update your profile');
+            }
+          }}
         />
       )}
     </div>
@@ -686,6 +536,100 @@ function CreateClosetModal({ tags, onClose, onCreate }: CreateClosetModalProps) 
               type="button"
               onClick={onClose}
               className="border px-4 py-2 rounded flex-1 hover:bg-gray-100"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Edit Profile Modal Component
+interface EditProfileModalProps {
+  profile: UserProfile;
+  onClose: () => void;
+  onSave: (updates: { full_name?: string; username?: string; avatar_url?: string }) => void;
+}
+
+function EditProfileModal({ profile, onClose, onSave }: EditProfileModalProps) {
+  const [fullName, setFullName] = useState(profile.full_name || '');
+  const [username, setUsername] = useState(profile.username || '');
+  const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url || '');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await onSave({
+        full_name: fullName.trim() || undefined,
+        username: username.trim() || undefined,
+        avatar_url: avatarUrl.trim() || undefined
+      });
+    } catch (error) {
+      console.error('Error in handleSubmit:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-lg w-full max-w-md">
+        <h3 className="text-lg font-bold mb-4">Edit Profile</h3>
+        
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">Display Name</label>
+            <input
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="w-full p-2 border rounded"
+              placeholder="Your name"
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">Username</label>
+            <div className="flex items-center">
+              <span className="text-gray-500 mr-1">@</span>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
+                className="flex-1 p-2 border rounded"
+                placeholder="username"
+              />
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">Profile Picture URL</label>
+            <input
+              type="url"
+              value={avatarUrl}
+              onChange={(e) => setAvatarUrl(e.target.value)}
+              className="w-full p-2 border rounded"
+              placeholder="https://example.com/image.jpg"
+            />
+          </div>
+          
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-black text-white px-4 py-2 rounded flex-1 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="border px-4 py-2 rounded flex-1 hover:bg-gray-100 disabled:opacity-50"
             >
               Cancel
             </button>

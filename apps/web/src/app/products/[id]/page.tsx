@@ -116,9 +116,12 @@ export default function ProductDetailPage() {
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <button
             onClick={() => router.back()}
-            className="text-gray-600 hover:text-black"
+            className="text-gray-600 hover:text-gray-900 p-1 rounded-full hover:bg-gray-100 transition"
+            aria-label="Back"
           >
-            ← Back
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
           </button>
           <h1 className="text-xl font-bold">Product Details</h1>
           <div className="w-20"></div>

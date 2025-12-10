@@ -30,12 +30,15 @@ export default function ClosetPage() {
   const [closet, setCloset] = useState<Closet | null>(null);
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [newOutfit, setNewOutfit] = useState({
+  const [showMenu, setShowMenu] = useState(false);
+  const [editCloset, setEditCloset] = useState({
     name: '',
     description: ''
   });
+  const [draggedOutfit, setDraggedOutfit] = useState<number | null>(null);
+  const [draggedOverOutfit, setDraggedOverOutfit] = useState<number | null>(null);
 
   useEffect(() => {
     if (!token || !closetId) {
@@ -52,9 +55,17 @@ export default function ClosetPage() {
           'Authorization': `Bearer ${token}`
         }
       });
-      const data = await res.json();
-      setCloset(data.closet);
-      setOutfits(data.outfits || []);
+      if (res.ok) {
+        const data = await res.json();
+        setCloset(data.closet);
+        setOutfits(data.outfits || []);
+        if (data.closet) {
+          setEditCloset({
+            name: data.closet.name,
+            description: data.closet.description || ''
+          });
+        }
+      }
     } catch (error) {
       console.error('Error fetching closet:', error);
     } finally {
@@ -62,43 +73,41 @@ export default function ClosetPage() {
     }
   };
 
-  const handleCreateOutfit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!token) {
-      alert('Please log in to create an outfit');
-      return;
-    }
+  const handleOutfitReorder = async (draggedId: number, targetId: number) => {
+    if (!token) return;
     
+    const draggedIndex = outfits.findIndex(o => o.id === draggedId);
+    const targetIndex = outfits.findIndex(o => o.id === targetId);
+    
+    if (draggedIndex === -1 || targetIndex === -1) return;
+    
+    // Reorder in state immediately for responsive UI
+    const newOutfits = [...outfits];
+    const [removed] = newOutfits.splice(draggedIndex, 1);
+    newOutfits.splice(targetIndex, 0, removed);
+    setOutfits(newOutfits);
+    
+    // Save order to backend
     try {
-      const res = await fetch(`http://localhost:3001/api/closets/${closetId}/outfits`, {
+      const outfitIds = newOutfits.map(o => o.id);
+      const res = await fetch(`http://localhost:3001/api/closets/${closetId}/outfits/reorder`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(newOutfit)
+        body: JSON.stringify({ outfit_ids: outfitIds })
       });
       
-      if (res.ok) {
-        const data = await res.json();
-        console.log('Outfit created successfully:', data);
-        setShowCreateModal(false);
-        setNewOutfit({ name: '', description: '' });
-        fetchClosetData();
-      } else {
-        const errorText = await res.text();
-        let error;
-        try {
-          error = JSON.parse(errorText);
-        } catch {
-          error = { error: errorText || `HTTP ${res.status}: ${res.statusText}` };
-        }
-        console.error('Failed to create outfit:', res.status, error);
-        alert(`Failed to create outfit: ${error.error || `HTTP ${res.status}`}`);
+      if (!res.ok) {
+        // Revert on error
+        setOutfits(outfits);
+        console.error('Failed to save outfit order');
       }
-    } catch (error: any) {
-      console.error('Error creating outfit:', error);
-      alert(`Error creating outfit: ${error.message || 'Unknown error'}`);
+    } catch (error) {
+      // Revert on error
+      setOutfits(outfits);
+      console.error('Error saving outfit order:', error);
     }
   };
 
@@ -133,6 +142,39 @@ export default function ClosetPage() {
       alert(`Error deleting closet: ${error.message || 'Unknown error'}`);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleUpdateCloset = async () => {
+    if (!editCloset.name.trim()) {
+      alert('Closet name is required');
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:3001/api/closets/${closetId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: editCloset.name,
+          description: editCloset.description
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setCloset(data.closet);
+        setShowRenameModal(false);
+      } else {
+        const errorText = await res.text();
+        alert(`Failed to update closet: ${errorText}`);
+      }
+    } catch (error: any) {
+      console.error('Error updating closet:', error);
+      alert(`Error updating closet: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -172,199 +214,264 @@ export default function ClosetPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
+    <div className="min-h-screen relative" style={{ zIndex: 1 }}>
+      <header className="bg-white/95 backdrop-blur-sm shadow-lg relative" style={{ zIndex: 10 }}>
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <button
                 onClick={() => router.push('/profile')}
-                className="text-blue-600 hover:text-blue-800 mb-2"
+                className="text-gray-600 hover:text-gray-900 mb-2 p-1 rounded-full hover:bg-gray-100 transition"
+                aria-label="Back"
               >
-                ← Back to Profile
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
               </button>
-              <h1 className="text-3xl font-bold">{closet.name}</h1>
+              <h1 className="text-3xl font-bold text-gray-900">{closet.name}</h1>
               {closet.description && (
-                <p className="text-gray-600 mt-2">{closet.description}</p>
+                <p className="text-gray-700 mt-2">{closet.description}</p>
               )}
-              <div className="mt-2 text-sm text-gray-500">
-                {closet.is_public ? '🌐 Public' : '🔒 Private'}
-              </div>
             </div>
-            <button
-              onClick={handleDeleteCloset}
-              disabled={deleting}
-              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {deleting ? 'Deleting...' : 'Delete Closet'}
-            </button>
+            {/* 3-dot menu button */}
+            <div className="relative">
+              <button
+                onClick={() => setShowMenu(!showMenu)}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition"
+                title="Menu"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                </svg>
+              </button>
+              
+              {showMenu && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setShowMenu(false)}
+                  ></div>
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        sessionStorage.setItem('outfitCreation', JSON.stringify({
+                          closetId: closet.id,
+                          closetName: closet.name,
+                          mode: 'creating',
+                          selectedProducts: []
+                        }));
+                        router.push('/?outfit-mode=true');
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-t-lg transition"
+                    >
+                      + New Outfit
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        setShowRenameModal(true);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition"
+                    >
+                      Rename Closet
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        setShowRenameModal(true);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition"
+                    >
+                      Edit Description
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        handleDeleteCloset();
+                      }}
+                      disabled={deleting}
+                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 rounded-b-lg transition disabled:opacity-50"
+                    >
+                      {deleting ? 'Deleting...' : 'Delete Closet'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-6 flex justify-between items-center">
-          <h2 className="text-2xl font-bold">Outfits</h2>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-          >
-            + Create New Outfit
-          </button>
-        </div>
+      <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8 relative" style={{ zIndex: 1 }}>
 
         {outfits.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-12 text-center">
+          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
             <p className="text-gray-500 mb-4">No outfits in this closet yet.</p>
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => {
+                if (closet) {
+                  sessionStorage.setItem('outfitCreation', JSON.stringify({
+                    closetId: closet.id,
+                    closetName: closet.name,
+                    mode: 'creating',
+                    selectedProducts: []
+                  }));
+                  router.push('/?outfit-mode=true');
+                }
+              }}
               className="bg-blue-600 text-white px-6 py-3 rounded hover:bg-blue-700"
             >
               Create Your First Outfit
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {outfits.map((outfit) => (
+          <div className="masonry-container p-4">
+            {outfits.map((outfit, index) => (
               <div
                 key={outfit.id}
+                draggable
+                onDragStart={(e) => {
+                  setDraggedOutfit(outfit.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (draggedOutfit !== outfit.id) {
+                    setDraggedOverOutfit(outfit.id);
+                  }
+                }}
+                onDragLeave={() => {
+                  setDraggedOverOutfit(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (draggedOutfit && draggedOutfit !== outfit.id) {
+                    handleOutfitReorder(draggedOutfit, outfit.id);
+                  }
+                  setDraggedOutfit(null);
+                  setDraggedOverOutfit(null);
+                }}
+                onDragEnd={() => {
+                  setDraggedOutfit(null);
+                  setDraggedOverOutfit(null);
+                }}
+                className="masonry-item product-card cursor-pointer"
                 onClick={() => router.push(`/profile/closets/${closetId}/outfits/${outfit.id}`)}
-                className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+                style={{
+                  border: draggedOverOutfit === outfit.id ? '3px solid #3b82f6' : '3px solid #9ca3af',
+                  borderRadius: '12px',
+                  marginBottom: '24px',
+                  overflow: 'hidden',
+                  boxShadow: draggedOverOutfit === outfit.id ? '0 6px 16px rgba(59, 130, 246, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.15)',
+                  backgroundColor: '#ffffff',
+                  opacity: draggedOutfit === outfit.id ? 0.5 : 1,
+                  transform: draggedOverOutfit === outfit.id ? 'translateY(-4px)' : 'none',
+                  transition: 'all 0.2s ease'
+                }}
               >
-                {/* Tall vertical preview - iPhone-like figure layout */}
-                <div className="h-96 bg-gray-50 relative overflow-hidden">
-                  {outfit.preview_images && outfit.preview_images.length > 0 ? (
-                    <div className="h-full flex flex-col gap-1 p-2">
-                      {/* Top section - Accessories/Headwear */}
-                      <div className="h-16 flex gap-1">
-                        {outfit.preview_images.slice(0, 2).map((img: string, idx: number) => (
+                {/* Scrapbook-style vertical layout - dynamic sizing, no whitespace */}
+                {outfit.preview_images && outfit.preview_images.length > 0 ? (
+                  <div className="flex flex-col bg-white" style={{ gap: '0px', padding: '4px' }}>
+                    {/* Stack items vertically - images determine their own height dynamically */}
+                    {outfit.preview_images.map((img: string, idx: number) => {
+                      return (
+                        <div 
+                          key={idx} 
+                          className="w-full bg-white"
+                          style={{ 
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            overflow: 'hidden'
+                          }}
+                        >
                           <img
-                            key={idx}
                             src={img}
-                            alt={`${outfit.name} preview ${idx + 1}`}
-                            className="w-1/2 h-full object-cover rounded"
+                            alt={`${outfit.name} item ${idx + 1}`}
+                            className="w-full h-auto"
+                            style={{ 
+                              display: 'block',
+                              objectFit: 'contain'
+                            }}
                           />
-                        ))}
-                        {outfit.preview_images.length < 2 && (
-                          <div className="w-1/2 bg-gray-200 rounded"></div>
-                        )}
-                      </div>
-                      {/* Middle section - Top */}
-                      <div className="flex-1 flex gap-1">
-                        {outfit.preview_images.slice(2, 4).map((img: string, idx: number) => (
-                          <img
-                            key={idx + 2}
-                            src={img}
-                            alt={`${outfit.name} preview ${idx + 3}`}
-                            className="w-1/2 h-full object-cover rounded"
-                          />
-                        ))}
-                        {outfit.preview_images.length < 4 && (
-                          <div className="w-1/2 bg-gray-200 rounded"></div>
-                        )}
-                      </div>
-                      {/* Bottom section - Bottoms/Shoes */}
-                      <div className="h-20 flex gap-1">
-                        {outfit.preview_images.length > 4 ? (
-                          outfit.preview_images.slice(4, 6).map((img: string, idx: number) => (
-                            <img
-                              key={idx + 4}
-                              src={img}
-                              alt={`${outfit.name} preview ${idx + 5}`}
-                              className="w-1/2 h-full object-cover rounded"
-                            />
-                          ))
-                        ) : (
-                          <>
-                            {outfit.preview_images.slice(0, 2).map((img: string, idx: number) => (
-                              <img
-                                key={idx}
-                                src={img}
-                                alt={`${outfit.name} preview ${idx + 1}`}
-                                className="w-1/2 h-full object-cover rounded"
-                              />
-                            ))}
-                          </>
-                        )}
-                        {outfit.preview_images.length < 2 && (
-                          <div className="w-1/2 bg-gray-200 rounded"></div>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="h-full flex items-center justify-center">
-                      <span className="text-6xl opacity-30">👔</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-4 border-t">
-                  <h3 className="text-lg font-semibold mb-1">{outfit.name}</h3>
-                  {outfit.description && (
-                    <p className="text-gray-600 text-sm mb-2 line-clamp-2">{outfit.description}</p>
-                  )}
-                  <div className="text-sm text-gray-500">
-                    {outfit.product_count} item{outfit.product_count !== 1 ? 's' : ''}
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
+                ) : (
+                  <div className="h-96 bg-gray-50 flex items-center justify-center">
+                    <span className="text-4xl opacity-30">👔</span>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
       </main>
 
-      {showCreateModal && (
+
+      {/* Rename/Edit Closet Modal */}
+      {showRenameModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-xl font-bold mb-4">Create New Outfit</h3>
+            <h3 className="text-xl font-bold mb-4">Edit Closet</h3>
             
-            <form onSubmit={handleCreateOutfit}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">
-                  Outfit Name *
-                </label>
-                <input
-                  type="text"
-                  value={newOutfit.name}
-                  onChange={(e) => setNewOutfit({ ...newOutfit, name: e.target.value })}
-                  className="w-full px-3 py-2 border rounded"
-                  placeholder="e.g., Cozy Office Look"
-                  required
-                />
-              </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">
+                Closet Name *
+              </label>
+              <input
+                type="text"
+                value={editCloset.name}
+                onChange={(e) => setEditCloset({ ...editCloset, name: e.target.value })}
+                className="w-full px-3 py-2 border rounded"
+                placeholder="Closet Name"
+                required
+              />
+            </div>
 
-              <div className="mb-6">
-                <label className="block text-sm font-medium mb-2">
-                  Description
-                </label>
-                <textarea
-                  value={newOutfit.description}
-                  onChange={(e) => setNewOutfit({ ...newOutfit, description: e.target.value })}
-                  className="w-full px-3 py-2 border rounded"
-                  placeholder="Describe your outfit..."
-                  rows={3}
-                />
-              </div>
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-2">
+                Description
+              </label>
+              <textarea
+                value={editCloset.description}
+                onChange={(e) => setEditCloset({ ...editCloset, description: e.target.value })}
+                className="w-full px-3 py-2 border rounded"
+                placeholder="Closet description..."
+                rows={3}
+              />
+            </div>
 
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="flex-1 px-4 py-2 border rounded hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                >
-                  Create
-                </button>
-              </div>
-            </form>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRenameModal(false);
+                  if (closet) {
+                    setEditCloset({
+                      name: closet.name,
+                      description: closet.description || ''
+                    });
+                  }
+                }}
+                className="flex-1 px-4 py-2 border rounded hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdateCloset}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              >
+                Save
+              </button>
+            </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }

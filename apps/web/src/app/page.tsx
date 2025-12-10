@@ -54,8 +54,9 @@ export default function HomePage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedBrand, setSelectedBrand] = useState<string>('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedCategories, setSelectedCategories] = useState<number[]>([]); // Changed to array for multiple selection
   const [priceRange, setPriceRange] = useState({ min: '', max: '' });
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   
   // Outfit Creation Mode
   const isOutfitMode = searchParams.get('outfit-mode') === 'true';
@@ -84,6 +85,11 @@ export default function HomePage() {
         if (categoriesRes.ok) {
           const categoriesData = await categoriesRes.json();
           setCategories(categoriesData);
+          // Default to "Clothes" categories: Tops(1), Bottoms(2), Outerwear(5), Dresses(6)
+          const clothesCategories = categoriesData
+            .filter((cat: Category) => ['tops', 'bottoms', 'outerwear', 'dresses'].includes(cat.slug.toLowerCase()))
+            .map((cat: Category) => cat.id);
+          setSelectedCategories(clothesCategories);
         }
       } catch (error) {
         console.error('Error fetching filters:', error);
@@ -118,7 +124,11 @@ export default function HomePage() {
       setLoading(pageNum === 1);
       
       let url = `http://localhost:3001/api/products?page=${pageNum}&limit=24`;
-      if (selectedCategory) url += `&category=${selectedCategory}`;
+      // Support multiple categories
+      if (selectedCategories.length > 0) {
+        const categoryParam = selectedCategories.join(',');
+        url += `&categories=${categoryParam}`;
+      }
       if (selectedBrand) url += `&brand=${selectedBrand}`;
       if (priceRange.min) url += `&minPrice=${priceRange.min}`;
       if (priceRange.max) url += `&maxPrice=${priceRange.max}`;
@@ -263,7 +273,7 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchProducts(1);
-  }, [selectedCategory, selectedBrand, priceRange]);
+  }, [selectedCategories, selectedBrand, priceRange]);
 
   const handleLogout = () => {
     logout();
@@ -271,9 +281,9 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen relative" style={{ zIndex: 1 }}>
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-4 py-3 shadow-sm">
+    <div className="min-h-screen bg-[#efefef] relative" style={{ zIndex: 1 }}>
+      {/* Header - Pinterest style */}
+      <header className="sticky top-0 z-50 bg-white px-4 py-2">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div 
             className="flex items-center cursor-pointer hover:opacity-80 transition"
@@ -360,82 +370,196 @@ export default function HomePage() {
               )}
               <button
                 onClick={cancelOutfitCreation}
-                className="text-gray-600 hover:text-black"
+                className="text-gray-600 hover:text-gray-900 p-1 rounded-full hover:bg-gray-100 transition"
+                aria-label={viewOutfitId ? "Back" : "Cancel"}
               >
-                {viewOutfitId ? '← Back to Profile' : 'Cancel'}
+                {viewOutfitId ? (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                ) : 'Cancel'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Filters Panel */}
+      {/* Filters Panel - Pinterest style */}
       {showFilters && (
-        <div className="sticky top-[57px] z-40 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="sticky top-[49px] z-40 bg-white border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 py-3">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {/* Category Filter */}
+              {/* Category Filter - Dropdown with main category checkboxes */}
               <div>
-                <label className="block text-xs font-medium mb-2 text-gray-700">Category</label>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black"
-                >
-                  <option value="">All Categories</option>
-                  {categories.map(cat => (
-                    <option key={cat.id} value={cat.slug}>{cat.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Brand Filter */}
-              <div>
-                <label className="block text-xs font-medium mb-2 text-gray-700">Brand</label>
-                <select
-                  value={selectedBrand}
-                  onChange={(e) => setSelectedBrand(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black"
-                >
-                  <option value="">All Brands</option>
-                  {brands.map(brand => (
-                    <option key={brand.id} value={brand.id}>{brand.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Price Range */}
-              <div>
-                <label className="block text-xs font-medium mb-2 text-gray-700">Price Range</label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    placeholder="Min"
-                    value={priceRange.min}
-                    onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
-                    className="w-1/2 p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Max"
-                    value={priceRange.max}
-                    onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
-                    className="w-1/2 p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black"
-                  />
+                <label className="block text-xs font-medium mb-1.5 text-gray-600">Category</label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm text-left focus:outline-none focus:ring-1 focus:ring-gray-400 bg-white flex items-center justify-between"
+                  >
+                    <span>
+                      {(() => {
+                        const clothesSelected = categories
+                          .filter(cat => ['tops', 'bottoms', 'outerwear', 'dresses'].includes(cat.slug.toLowerCase()))
+                          .some(cat => selectedCategories.includes(cat.id));
+                        const shoesSelected = categories
+                          .filter(cat => cat.slug.toLowerCase() === 'shoes')
+                          .some(cat => selectedCategories.includes(cat.id));
+                        const accessoriesSelected = categories
+                          .filter(cat => ['accessories', 'bags', 'jewelry'].includes(cat.slug.toLowerCase()))
+                          .some(cat => selectedCategories.includes(cat.id));
+                        
+                        const selected = [];
+                        if (clothesSelected) selected.push('Clothes');
+                        if (shoesSelected) selected.push('Shoes');
+                        if (accessoriesSelected) selected.push('Accessories');
+                        
+                        return selected.length === 0 ? 'All Categories' : selected.join(', ');
+                      })()}
+                    </span>
+                    <svg className={`w-4 h-4 transition-transform ${showCategoryDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {showCategoryDropdown && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-40" 
+                        onClick={() => setShowCategoryDropdown(false)}
+                      ></div>
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-2">
+                        <div className="space-y-0">
+                          {/* Clothes - clickable text */}
+                          <div
+                            onClick={() => {
+                              const clothesCategories = categories
+                                .filter(cat => ['tops', 'bottoms', 'outerwear', 'dresses'].includes(cat.slug.toLowerCase()))
+                                .map(cat => cat.id);
+                              const isSelected = clothesCategories.some(id => selectedCategories.includes(id));
+                              if (isSelected) {
+                                // Remove all clothes categories
+                                setSelectedCategories(selectedCategories.filter(id => !clothesCategories.includes(id)));
+                              } else {
+                                // Add all clothes categories
+                                setSelectedCategories([...selectedCategories.filter(id => !clothesCategories.includes(id)), ...clothesCategories]);
+                              }
+                            }}
+                            className={`text-sm cursor-pointer p-2 rounded hover:bg-gray-50 uppercase tracking-wide ${
+                              categories
+                                .filter(cat => ['tops', 'bottoms', 'outerwear', 'dresses'].includes(cat.slug.toLowerCase()))
+                                .some(cat => selectedCategories.includes(cat.id))
+                                ? 'font-bold text-gray-900' : 'font-normal text-gray-500'
+                            }`}
+                          >
+                            Clothes
+                          </div>
+                          {/* Shoes - clickable text */}
+                          <div
+                            onClick={() => {
+                              const shoesCategories = categories
+                                .filter(cat => cat.slug.toLowerCase() === 'shoes')
+                                .map(cat => cat.id);
+                              const isSelected = shoesCategories.some(id => selectedCategories.includes(id));
+                              if (isSelected) {
+                                // Remove shoes category
+                                setSelectedCategories(selectedCategories.filter(id => !shoesCategories.includes(id)));
+                              } else {
+                                // Add shoes category
+                                setSelectedCategories([...selectedCategories.filter(id => !shoesCategories.includes(id)), ...shoesCategories]);
+                              }
+                            }}
+                            className={`text-sm cursor-pointer p-2 rounded hover:bg-gray-50 uppercase tracking-wide ${
+                              categories
+                                .filter(cat => cat.slug.toLowerCase() === 'shoes')
+                                .some(cat => selectedCategories.includes(cat.id))
+                                ? 'font-bold text-gray-900' : 'font-normal text-gray-500'
+                            }`}
+                          >
+                            Shoes
+                          </div>
+                          {/* Accessories - clickable text */}
+                          <div
+                            onClick={() => {
+                              const accessoriesCategories = categories
+                                .filter(cat => ['accessories', 'bags', 'jewelry'].includes(cat.slug.toLowerCase()))
+                                .map(cat => cat.id);
+                              const isSelected = accessoriesCategories.some(id => selectedCategories.includes(id));
+                              if (isSelected) {
+                                // Remove all accessories categories
+                                setSelectedCategories(selectedCategories.filter(id => !accessoriesCategories.includes(id)));
+                              } else {
+                                // Add all accessories categories
+                                setSelectedCategories([...selectedCategories.filter(id => !accessoriesCategories.includes(id)), ...accessoriesCategories]);
+                              }
+                            }}
+                            className={`text-sm cursor-pointer p-2 rounded hover:bg-gray-50 uppercase tracking-wide ${
+                              categories
+                                .filter(cat => ['accessories', 'bags', 'jewelry'].includes(cat.slug.toLowerCase()))
+                                .some(cat => selectedCategories.includes(cat.id))
+                                ? 'font-bold text-gray-900' : 'font-normal text-gray-500'
+                            }`}
+                          >
+                            Accessories
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
+            </div>
+
+            {/* Brand Filter */}
+              <div>
+                <label className="block text-xs font-medium mb-1.5 text-gray-600">Brand</label>
+              <select
+                value={selectedBrand}
+                onChange={(e) => setSelectedBrand(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+              >
+                <option value="">All Brands</option>
+                {brands.map(brand => (
+                  <option key={brand.id} value={brand.id}>{brand.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Price Range */}
+              <div>
+                <label className="block text-xs font-medium mb-1.5 text-gray-600">Price Range</label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  placeholder="Min"
+                  value={priceRange.min}
+                  onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
+                    className="w-1/2 p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                />
+                <input
+                  type="number"
+                  placeholder="Max"
+                  value={priceRange.max}
+                  onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
+                    className="w-1/2 p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                />
               </div>
+            </div>
 
               <div className="flex items-end">
-                <button
-                  onClick={() => {
-                    setSelectedCategory('');
-                    setSelectedBrand('');
-                    setPriceRange({ min: '', max: '' });
-                  }}
-                  className="w-full px-4 py-2 text-sm text-gray-600 hover:text-black border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-                >
+            <button
+              onClick={() => {
+                    // Reset to default "Clothes" categories
+                    const clothesCategories = categories
+                      .filter((cat: Category) => ['tops', 'bottoms', 'outerwear', 'dresses'].includes(cat.slug.toLowerCase()))
+                      .map((cat: Category) => cat.id);
+                    setSelectedCategories(clothesCategories);
+                setSelectedBrand('');
+                setPriceRange({ min: '', max: '' });
+              }}
+                  className="w-full px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+            >
                   Clear Filters
-                </button>
+            </button>
               </div>
             </div>
           </div>
@@ -460,55 +584,13 @@ export default function HomePage() {
                 const imageUrl = product.images?.[0];
                 if (!imageUrl) return null;
                 
-                return (
-                  <div
-                    key={product.id}
-                    className={`masonry-item ${isSelected ? 'product-card selected' : 'product-card'}`}
-                    onClick={(e) => {
-                      if (isOutfitMode && !viewOutfitId) {
-                        toggleProductSelection(product);
-                      } else {
-                        router.push(`/products/${product.id}`);
-                      }
-                    }}
-                  >
-                    <img 
-                      src={imageUrl} 
-                      alt={product.title}
-                      className="product-image"
-                      style={{ width: '100%', height: 'auto', display: 'block' }}
-                    />
-                    {isSelected && (
-                      <div className="absolute top-3 right-3 bg-blue-600 text-white rounded-full w-10 h-10 flex items-center justify-center shadow-lg z-10">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="product-overlay">
-                      <div className="product-overlay-text">{product.title}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )
-        ) : (
-          // Show all products
-          loading && products.length === 0 ? (
-            <div className="text-center py-12 text-gray-600">Loading products...</div>
-          ) : (
-            <>
-              <div className="masonry-container">
-                {products.map(product => {
-                  const isSelected = selectedProducts.some(p => p.id === product.id);
-                  const imageUrl = product.images?.[0];
-                  if (!imageUrl) return null;
+                  // Check if product is shoes (category_id 3)
+                  const isShoes = product.category_id === 3;
                   
                   return (
                     <div
                       key={product.id}
-                      className={`masonry-item ${isSelected ? 'product-card selected' : 'product-card'}`}
+                      className={`masonry-item ${isSelected ? 'product-card selected' : 'product-card'} ${isShoes ? 'shoe-card' : ''}`}
                       onClick={(e) => {
                         if (isOutfitMode && !viewOutfitId) {
                           toggleProductSelection(product);
@@ -520,7 +602,7 @@ export default function HomePage() {
                       <img 
                         src={imageUrl} 
                         alt={product.title}
-                        className="product-image"
+                        className={isShoes ? "product-image shoe-image" : "product-image"}
                         style={{ width: '100%', height: 'auto', display: 'block' }}
                       />
                       {isSelected && (
@@ -535,23 +617,71 @@ export default function HomePage() {
                       </div>
                     </div>
                   );
-                })}
-              </div>
-              
-              {hasMore && !loading && (
-                <div className="text-center py-8">
-                  <button
-                    onClick={handleLoadMore}
-                    className="bg-white px-8 py-3 rounded-full border border-gray-300 hover:bg-gray-50 font-medium text-sm shadow-sm transition"
-                  >
-                    Load More
-                  </button>
-                </div>
-              )}
-            </>
+              })}
+            </div>
           )
-        )}
-      </main>
+        ) : (
+          // Show all products
+          loading && products.length === 0 ? (
+            <div className="text-center py-12 text-gray-600">Loading products...</div>
+            ) : (
+              <>
+              <div className="masonry-container">
+                  {products.map(product => {
+                    const isSelected = selectedProducts.some(p => p.id === product.id);
+                  const imageUrl = product.images?.[0];
+                  if (!imageUrl) return null;
+                  
+                  // Check if product is shoes (category_id 3)
+                  const isShoes = product.category_id === 3;
+                  
+                    return (
+                      <div
+                        key={product.id}
+                      className={`masonry-item ${isSelected ? 'product-card selected' : 'product-card'} ${isShoes ? 'shoe-card' : ''}`}
+                      onClick={(e) => {
+                        if (isOutfitMode && !viewOutfitId) {
+                          toggleProductSelection(product);
+                        } else {
+                          router.push(`/products/${product.id}`);
+                        }
+                      }}
+                    >
+                      <img 
+                        src={imageUrl} 
+                              alt={product.title}
+                        className={isShoes ? "product-image shoe-image" : "product-image"}
+                        style={{ width: '100%', height: 'auto', display: 'block' }}
+                            />
+                          {isSelected && (
+                        <div className="absolute top-3 right-3 bg-blue-600 text-white rounded-full w-10 h-10 flex items-center justify-center shadow-lg z-10">
+                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                        )}
+                      <div className="product-overlay">
+                        <div className="product-overlay-text">{product.title}</div>
+                      </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {hasMore && !loading && (
+                <div className="text-center py-8">
+                    <button
+                      onClick={handleLoadMore}
+                    className="bg-white px-8 py-3 rounded-full border border-gray-300 hover:bg-gray-50 font-medium text-sm shadow-sm transition"
+                    >
+                      Load More
+                    </button>
+                  </div>
+                )}
+              </>
+          )
+            )}
+          </main>
     </div>
   );
 }

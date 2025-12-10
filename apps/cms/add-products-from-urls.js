@@ -67,22 +67,52 @@ const SELECTORS = {
 
 async function fetchPage(url) {
   try {
+    // Parse URL to get origin for Referer header
+    const urlObj = new URL(url);
+    const origin = urlObj.origin;
+    
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5'
-      }
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': origin,
+        'Origin': origin,
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0'
+      },
+      // Add redirect handling
+      redirect: 'follow'
     });
 
     if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      console.error(`   Response status: ${response.status}`);
+      console.error(`   Response headers:`, Object.fromEntries(response.headers.entries()));
+      if (errorText) {
+        console.error(`   Response body (first 500 chars):`, errorText.substring(0, 500));
+      }
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     return await response.text();
   } catch (error) {
+    if (error.message.includes('403')) {
+      throw new Error(`Failed to fetch ${url}: 403 Forbidden - Website is blocking automated requests. This site may require manual entry or a headless browser.`);
+    }
     throw new Error(`Failed to fetch ${url}: ${error.message}`);
   }
+}
+
+// Helper function to add delay between requests
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function extractText($, selectors, defaultValue = null) {
@@ -591,6 +621,11 @@ async function processUrls(urls) {
   
   for (const url of urls) {
     try {
+      // Add a small delay between requests to avoid rate limiting
+      if (urls.indexOf(url) > 0) {
+        await delay(1000); // 1 second delay between requests
+      }
+      
       // Validate URL
       if (!url || !url.startsWith('http')) {
         console.error(`❌ Invalid URL: ${url}`);
